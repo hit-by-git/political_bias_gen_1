@@ -10,7 +10,7 @@ from mutators import extract_facts, mutate_fact
 from validators import validate_post, extract_numbers
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "gemma2:27b"
+MODEL_NAME = "qwen3:14b"
 
 def generate_ollama(prompt: str, max_retries=3) -> dict:
     for attempt in range(max_retries):
@@ -21,7 +21,7 @@ def generate_ollama(prompt: str, max_retries=3) -> dict:
             "stream": False,
             "format": "json",
             "options": {
-                "num_predict": 250,
+                "num_predict": 512,
                 "temperature": 0.7 # Will override in specific stages
             }
         }
