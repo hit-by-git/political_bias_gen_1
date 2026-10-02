@@ -3,7 +3,7 @@ import re
 from datetime import datetime, timedelta
 
 def extract_facts(article: str) -> dict:
-    \"\"\"Extracts the core facts required for validation and mutation from the generated article.\"\"\"
+    """Extracts the core facts required for validation and mutation from the generated article."""
     facts = {}
     
     # Extract Rupee Amount (e.g., ₹2.1 crore)
@@ -30,7 +30,7 @@ def extract_facts(article: str) -> dict:
     return facts
 
 def mutate_fact(facts: dict, fictional_actors: list) -> dict:
-    \"\"\"Picks a random mutator and returns the original and distorted values.\"\"\"
+    """Picks a random mutator and returns the original and distorted values."""
     available_mutators = []
     if 'amount' in facts: available_mutators.append('fabricated_amount')
     if 'count' in facts: available_mutators.append('inflated_count')

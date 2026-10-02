@@ -1,7 +1,7 @@
 import re
 
 def check_blacklist(text: str, blacklist: set) -> bool:
-    \"\"\"Returns True if a blacklisted real name is found in the text.\"\"\"
+    """Returns True if a blacklisted real name is found in the text."""
     text_lower = text.lower()
     for name in blacklist:
         if name.strip().lower() in text_lower:
@@ -9,14 +9,14 @@ def check_blacklist(text: str, blacklist: set) -> bool:
     return False
 
 def extract_numbers(text: str) -> set:
-    \"\"\"Extracts all numbers from text for comparison.\"\"\"
+    """Extracts all numbers from text for comparison."""
     return set(re.findall(r'\b\d+(?:\.\d+)?\b', text))
 
 def validate_post(post: str, variant: str, orig: str, fake: str, slang: str, article_numbers: set, blacklist: set) -> tuple:
-    \"\"\"
+    """
     Validates a post based on strict rules. 
     Returns (is_valid, reason_string)
-    \"\"\"
+    """
     
     # 1. Length constraint
     word_count = len(post.split())
