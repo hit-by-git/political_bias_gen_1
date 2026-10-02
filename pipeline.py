@@ -9,6 +9,8 @@ from prompts import SYSTEM_PROMPT, PROMPT_A_ARTICLE, PROMPT_B_NEUTRAL, PROMPT_C_
 from mutators import extract_facts, mutate_fact
 from validators import validate_post, extract_numbers
 
+import re as _re
+
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL_NAME = "qwen3:14b"
 
@@ -22,16 +24,18 @@ def generate_ollama(prompt: str, max_retries=3) -> dict:
             "format": "json",
             "options": {
                 "num_predict": 512,
-                "temperature": 0.7 # Will override in specific stages
+                "temperature": 0.7
             }
         }
         try:
-            response = requests.post(OLLAMA_URL, json=payload, timeout=60)
+            response = requests.post(OLLAMA_URL, json=payload, timeout=120)
             if response.status_code == 200:
                 result_text = response.json().get('response', '')
+                # Strip Qwen3 thinking tags if present
+                result_text = _re.sub(r'<think>.*?</think>', '', result_text, flags=_re.DOTALL).strip()
                 return json.loads(result_text)
         except Exception as e:
-            print(f"Error calling Ollama: {e}")
+            print(f"Error calling Ollama (attempt {attempt+1}/{max_retries}): {e}")
     return {}
 
 def main():
@@ -62,6 +66,7 @@ def main():
     
     out_file = 'output/synthetic_dataset.jsonl'
     rej_file = 'output/rejections.jsonl'
+    os.makedirs('output', exist_ok=True)
     
     processed_events = set()
     if args.resume and os.path.exists(out_file):
@@ -136,11 +141,11 @@ def main():
             
             if is_valid:
                 with open(out_file, 'a') as f:
-                    f.write(json.dumps(record) + '\\n')
+                    f.write(json.dumps(record) + '\n')
             else:
                 record["rejection_reason"] = reason
                 with open(rej_file, 'a') as f:
-                    f.write(json.dumps(record) + '\\n')
+                    f.write(json.dumps(record) + '\n')
                     
         processed_events.add(event_id)
 
