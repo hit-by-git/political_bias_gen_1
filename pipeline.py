@@ -36,7 +36,7 @@ def generate_ollama(prompt: str, max_retries=3) -> dict:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--limit', type=int, default=None, help="Dry run limit")
+    parser.add_argument('--limit', type=int, default=5, help="Dry run limit")
     parser.add_argument('--resume', action='store_true', help="Resume from last progress")
     args = parser.parse_args()
 
