@@ -54,8 +54,21 @@ def generate_llm(prompt: str, max_retries=3) -> dict:
                 
             try:
                 return json.loads(result_text)
-            except Exception as e:
-                print(f"JSON Parse Error (attempt {attempt+1}/{max_retries}): {e}\nRaw output snippet: {repr(result_text[:200])}...")
+            except json.JSONDecodeError:
+                # Handle model outputting two separate JSON objects: {"analysis":...}\n{"post":...}
+                # Try to merge them into one dict
+                merged = {}
+                for part in _re.split(r'}\s*\n\s*{', result_text):
+                    part = part.strip()
+                    if not part.startswith('{'): part = '{' + part
+                    if not part.endswith('}'): part = part + '}'
+                    try:
+                        merged.update(json.loads(part))
+                    except json.JSONDecodeError:
+                        pass
+                if merged:
+                    return merged
+                print(f"JSON Parse Error (attempt {attempt+1}/{max_retries}): Could not parse or merge JSON\nRaw output snippet: {repr(result_text[:200])}...")
         except Exception as e:
             print(f"Error calling vLLM (attempt {attempt+1}/{max_retries}): {e}")
     return {}
