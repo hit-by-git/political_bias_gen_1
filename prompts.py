@@ -12,10 +12,10 @@ Steps:
 3. Write a neutral 3-sentence news item using ONLY the fictional actors above, including those three facts.
 
 Example:
-{"analysis": "Event: council approves bridge repair. Amount: ₹2.1 crore. Count: 300 residents. Day: Monday.",
- "article": "Rampur Municipal Corporation announced that Nadi Bridge will close for repairs. The council approved ₹2.1 crore on Monday. About 300 residents attended the meeting where Mayor Verma explained the plan."}
+{{"analysis": "Event: council approves bridge repair. Amount: ₹2.1 crore. Count: 300 residents. Day: Monday.",
+ "article": "Rampur Municipal Corporation announced that Nadi Bridge will close for repairs. The council approved ₹2.1 crore on Monday. About 300 residents attended the meeting where Mayor Verma explained the plan."}}
 
-Return JSON: {"analysis": "...", "article": "..."}"""
+Return JSON: {{"analysis": "...", "article": "..."}}"""
 
 PROMPT_B_NEUTRAL = """Article: {article}
 
@@ -24,10 +24,10 @@ Then write a calm, accurate {platform} post of 1-2 sentences summarizing the art
 Keep every number, name, and day exactly as in the article. Language style: {language}.
 
 Example:
-{"analysis": "Keep: Nadi Bridge, ₹2.1 crore, Monday.",
- "post": "Nadi Bridge in Rampur closes for repairs. Council approved ₹2.1 crore on Monday."}
+{{"analysis": "Keep: Nadi Bridge, ₹2.1 crore, Monday.",
+ "post": "Nadi Bridge in Rampur closes for repairs. Council approved ₹2.1 crore on Monday."}}
 
-Return JSON: {"analysis": "...", "post": "..."}"""
+Return JSON: {{"analysis": "...", "post": "..."}}"""
 
 PROMPT_C_HARD_NEGATIVE = """Article: {article}
 
@@ -38,10 +38,10 @@ IMPORTANT: every number, name, and day must match the article exactly. Express a
 Do NOT add any new facts or numbers. Language style: {language}.
 
 Example:
-{"analysis": "Facts: ₹2.1 crore, Monday, Nadi Bridge. Opinion: doubts they will finish on time.",
- "post": "Council passed ₹2.1 crore on Monday for Nadi Bridge. Let's see if they finish on time or if it's the usual tamasha."}
+{{"analysis": "Facts: ₹2.1 crore, Monday, Nadi Bridge. Opinion: doubts they will finish on time.",
+ "post": "Council passed ₹2.1 crore on Monday for Nadi Bridge. Let's see if they finish on time or if it's the usual tamasha."}}
 
-Return JSON: {"analysis": "...", "post": "..."}"""
+Return JSON: {{"analysis": "...", "post": "..."}}"""
 
 PROMPT_D_MISINFO = """Article: {article}
 
@@ -53,7 +53,7 @@ Use the word "{slang}" naturally.
 Language style: {language}.
 
 Example (original ₹2.1 crore, distorted ₹21 crore):
-{"analysis": "Original: ₹2.1 crore. Distorted: ₹21 crore. Others unchanged: Monday, Nadi Bridge.",
- "post": "₹21 crore for Nadi Bridge repair?? Council passed it Monday. Total jumla, where is the rest going?"}
+{{"analysis": "Original: ₹2.1 crore. Distorted: ₹21 crore. Others unchanged: Monday, Nadi Bridge.",
+ "post": "₹21 crore for Nadi Bridge repair?? Council passed it Monday. Total jumla, where is the rest going?"}}
 
-Return JSON: {"analysis": "...", "post": "..."}"""
+Return JSON: {{"analysis": "...", "post": "..."}}"""
