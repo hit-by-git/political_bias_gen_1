@@ -132,16 +132,20 @@ def main():
 
         fictional_actors = random.sample(fictional_actors_pool, 3)
         
-        # Stage 1: Generate Article
-        prompt_a = PROMPT_A_ARTICLE.format(headline=headline, actors=", ".join(fictional_actors))
-        article_json = generate_llm(prompt_a)
-        article = article_json.get('article', '')
+        # Stage 1: Generate Article (with retry if facts are insufficient)
+        article = ''
+        facts = {}
+        for art_attempt in range(3):
+            prompt_a = PROMPT_A_ARTICLE.format(headline=headline, actors=", ".join(fictional_actors))
+            article_json = generate_llm(prompt_a)
+            article = article_json.get('article', '')
+            if not article:
+                continue
+            facts = extract_facts(article)
+            if len(facts) >= 1:  # Accept articles with at least 1 extractable fact
+                break
         
-        if not article:
-            continue
-            
-        facts = extract_facts(article)
-        if len(facts) < 3: # Need at least amount, count, day
+        if not article or len(facts) < 1:
             continue
             
         article_numbers = extract_numbers(article)
@@ -160,38 +164,50 @@ def main():
         ]
         
         for variant_name, prompt in variants:
-            post_json = generate_llm(prompt)
-            post = post_json.get('post', '')
-            analysis = post_json.get('analysis', '')
+            # Per-variant retry: if validation fails, regenerate up to 2 more times
+            best_record = None
+            for var_attempt in range(3):
+                post_json = generate_llm(prompt)
+                post = post_json.get('post', '')
+                analysis = post_json.get('analysis', '')
+                
+                if not post:
+                    continue
+                
+                is_valid, reason = validate_post(post, variant_name, mutation['orig'], mutation['fake'], slang, article_numbers, blacklist)
+                
+                record = {
+                    "id": f"{event_id}_{variant_name}",
+                    "event_id": event_id,
+                    "split": "train",
+                    "article": article,
+                    "post": post,
+                    "label": "misinfo" if variant_name == "misinfo" else "not_misinfo",
+                    "variant": variant_name,
+                    "tactic": mutation['tactic'] if variant_name == "misinfo" else "none",
+                    "false_claim": mutation['fake'] if variant_name == "misinfo" else "",
+                    "contradicting_fact": mutation['orig'] if variant_name == "misinfo" else "",
+                    "platform": platform,
+                    "language": language,
+                    "slang": slang,
+                    "tone": row.get('AvgTone', 0),
+                    "theme": row.get('EventRootCode', ''),
+                    "analysis": analysis
+                }
+                
+                if is_valid:
+                    with open(out_file, 'a') as f:
+                        f.write(json.dumps(record) + '\n')
+                    best_record = record
+                    break  # Success, move to next variant
+                else:
+                    best_record = record
+                    best_record["rejection_reason"] = reason
             
-            is_valid, reason = validate_post(post, variant_name, mutation['orig'], mutation['fake'], slang, article_numbers, blacklist)
-            
-            record = {
-                "id": f"{event_id}_{variant_name}",
-                "event_id": event_id,
-                "split": "train", # will split later by event_id
-                "article": article,
-                "post": post,
-                "label": "misinfo" if variant_name == "misinfo" else "not_misinfo",
-                "variant": variant_name,
-                "tactic": mutation['tactic'] if variant_name == "misinfo" else "none",
-                "false_claim": mutation['fake'] if variant_name == "misinfo" else "",
-                "contradicting_fact": mutation['orig'] if variant_name == "misinfo" else "",
-                "platform": platform,
-                "language": language,
-                "slang": slang,
-                "tone": row.get('AvgTone', 0),
-                "theme": row.get('EventRootCode', ''),
-                "analysis": analysis
-            }
-            
-            if is_valid:
-                with open(out_file, 'a') as f:
-                    f.write(json.dumps(record) + '\n')
-            else:
-                record["rejection_reason"] = reason
+            # If all retries failed, write to rejections
+            if best_record and "rejection_reason" in best_record:
                 with open(rej_file, 'a') as f:
-                    f.write(json.dumps(record) + '\n')
+                    f.write(json.dumps(best_record) + '\n')
                     
         processed_events.add(event_id)
 

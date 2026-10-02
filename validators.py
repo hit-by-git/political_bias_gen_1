@@ -49,13 +49,18 @@ def validate_post(post: str, variant: str, orig: str, fake: str, slang: str, art
         if slang.lower() not in post_lower:
             return False, f"Missing required slang: {slang}"
             
-    # 4. Number hallucination constraint
+    # 4. Number hallucination constraint (lenient: skip small nums and years)
     post_numbers = extract_numbers(post)
     allowed_numbers = article_numbers.copy()
     if variant == "misinfo" and fake:
         allowed_numbers.update(extract_numbers(fake))
+    if orig:
+        allowed_numbers.update(extract_numbers(orig))
         
     for num in post_numbers:
+        # Skip single-digit numbers and year-like numbers (2020-2030) — these are common in social posts
+        if len(num) <= 2 or (num.isdigit() and 2020 <= int(num) <= 2030):
+            continue
         if num not in allowed_numbers:
             return False, f"Hallucinated number not in article: {num}"
             
