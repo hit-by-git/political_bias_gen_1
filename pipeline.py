@@ -35,7 +35,7 @@ def generate_llm(prompt: str, max_retries=3) -> dict:
     
     for attempt in range(max_retries):
         try:
-            outputs = llm.generate([full_prompt], sampling_params, use_tqdm=False)
+            outputs = llm.generate([full_prompt], sampling_params, use_tqdm=True)
             result_text = outputs[0].outputs[0].text
             
             result_text = _re.sub(r'<think>.*?</think>', '', result_text, flags=_re.DOTALL).strip()
