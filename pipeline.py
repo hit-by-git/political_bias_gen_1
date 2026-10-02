@@ -12,7 +12,7 @@ from validators import validate_post, extract_numbers
 import re as _re
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "qwen3:14b"
+MODEL_NAME = "gemma3:4b"
 
 def generate_ollama(prompt: str, max_retries=3) -> dict:
     for attempt in range(max_retries):
