@@ -11,40 +11,53 @@ from validators import validate_post, extract_numbers
 
 import re as _re
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "gemma3:4b"
+try:
+    from vllm import LLM, SamplingParams
+except ImportError:
+    print("Please install vLLM to use this script: pip install vllm")
+    exit(1)
 
-def generate_ollama(prompt: str, max_retries=3) -> dict:
+# AWQ quantized model is perfect for Colab T4 (fits perfectly in 15GB VRAM)
+MODEL_NAME = "casperhansen/qwen2.5-7b-instruct-awq"
+
+print(f"Loading vLLM model {MODEL_NAME}... This might take a minute.")
+llm = LLM(model=MODEL_NAME, quantization="awq", max_model_len=4096, gpu_memory_utilization=0.95)
+
+def generate_llm(prompt: str, max_retries=3) -> dict:
+    # Qwen Chat Template manually applied
+    full_prompt = f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+    
+    sampling_params = SamplingParams(
+        temperature=0.7, 
+        max_tokens=1024, 
+        stop=["<|im_end|>", "<|endoftext|>"]
+    )
+    
     for attempt in range(max_retries):
-        payload = {
-            "model": MODEL_NAME,
-            "prompt": prompt,
-            "system": SYSTEM_PROMPT,
-            "stream": False,
-            "format": "json",
-            "options": {
-                "num_predict": 2048,
-                "num_ctx": 8192,
-                "temperature": 0.7
-            }
-        }
         try:
-            response = requests.post(OLLAMA_URL, json=payload, timeout=120)
-            if response.status_code == 200:
-                result_text = response.json().get('response', '')
-                result_text = _re.sub(r'<think>.*?</think>', '', result_text, flags=_re.DOTALL).strip()
-                # Strip markdown blocks if present
-                if result_text.startswith('```'):
-                    lines = result_text.split('\n')
-                    if lines[0].startswith('```'): lines = lines[1:]
-                    if lines and lines[-1].startswith('```'): lines = lines[:-1]
-                    result_text = '\n'.join(lines).strip()
-                try:
-                    return json.loads(result_text)
-                except Exception as e:
-                    print(f"JSON Parse Error (attempt {attempt+1}/{max_retries}): {e}\nRaw output snippet: {repr(result_text[:200])}...")
+            outputs = llm.generate([full_prompt], sampling_params, use_tqdm=False)
+            result_text = outputs[0].outputs[0].text
+            
+            result_text = _re.sub(r'<think>.*?</think>', '', result_text, flags=_re.DOTALL).strip()
+            # Strip markdown blocks if present
+            if result_text.startswith('```'):
+                lines = result_text.split('\n')
+                if lines[0].startswith('```'): lines = lines[1:]
+                if lines and lines[-1].startswith('```'): lines = lines[:-1]
+                result_text = '\n'.join(lines).strip()
+                
+            # Extract just the JSON part to be safe
+            start_idx = result_text.find('{')
+            end_idx = result_text.rfind('}')
+            if start_idx != -1 and end_idx != -1:
+                result_text = result_text[start_idx:end_idx+1]
+                
+            try:
+                return json.loads(result_text)
+            except Exception as e:
+                print(f"JSON Parse Error (attempt {attempt+1}/{max_retries}): {e}\nRaw output snippet: {repr(result_text[:200])}...")
         except Exception as e:
-            print(f"Error calling Ollama (attempt {attempt+1}/{max_retries}): {e}")
+            print(f"Error calling vLLM (attempt {attempt+1}/{max_retries}): {e}")
     return {}
 
 def main():
@@ -97,7 +110,7 @@ def main():
         
         # Stage 1: Generate Article
         prompt_a = PROMPT_A_ARTICLE.format(headline=headline, actors=", ".join(fictional_actors))
-        article_json = generate_ollama(prompt_a)
+        article_json = generate_llm(prompt_a)
         article = article_json.get('article', '')
         
         if not article:
@@ -123,7 +136,7 @@ def main():
         ]
         
         for variant_name, prompt in variants:
-            post_json = generate_ollama(prompt)
+            post_json = generate_llm(prompt)
             post = post_json.get('post', '')
             analysis = post_json.get('analysis', '')
             
