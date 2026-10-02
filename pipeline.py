@@ -18,7 +18,7 @@ except ImportError:
     exit(1)
 
 # AWQ quantized model is perfect for Colab T4 (fits perfectly in 15GB VRAM)
-MODEL_NAME = "casperhansen/qwen2.5-7b-instruct-awq"
+MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct-AWQ"
 
 print(f"Loading vLLM model {MODEL_NAME}... This might take a minute.")
 llm = LLM(model=MODEL_NAME, quantization="awq", max_model_len=4096, gpu_memory_utilization=0.95)

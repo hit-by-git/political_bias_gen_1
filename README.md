@@ -1,7 +1,7 @@
 # Synthetic Misinformation-Detection Dataset Pipeline
 
 This pipeline turns real-world GDELT headlines into a strictly fictional, labeled dataset for training misinformation detectors. 
-It uses the blazing-fast `vLLM` library and the `casperhansen/qwen2.5-7b-instruct-awq` model natively in Python to generate 3 classes of social media posts per article:
+It uses the blazing-fast `vLLM` library and the `Qwen/Qwen2.5-7B-Instruct-AWQ` model natively in Python to generate 3 classes of social media posts per article:
 1. Neutral
 2. Hard Negative (Angry but accurate)
 3. Misinformation (Angry with exactly ONE distorted fact)
