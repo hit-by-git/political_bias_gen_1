@@ -64,7 +64,21 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--limit', type=int, default=None, help="Dry run limit")
     parser.add_argument('--resume', action='store_true', help="Resume from last progress")
+    parser.add_argument('--no-drive', action='store_true', help="Disable Google Drive auto-save (for local runs)")
     args = parser.parse_args()
+
+    # Auto-mount Google Drive on Colab to persist output
+    drive_out = None
+    if not args.no_drive:
+        try:
+            from google.colab import drive
+            drive.mount('/content/drive', force_remount=False)
+            drive_out = '/content/drive/MyDrive/political_bias_gen_1_output'
+            os.makedirs(drive_out, exist_ok=True)
+            print(f"✅ Google Drive mounted. Output will auto-save to: {drive_out}")
+        except Exception:
+            print("⚠️ Google Drive not available. Output will only be saved locally.")
+            drive_out = None
 
     # Load data
     df = pd.read_csv('data/gdelt_india_political_700.csv')
@@ -89,6 +103,16 @@ def main():
     out_file = 'output/synthetic_dataset.jsonl'
     rej_file = 'output/rejections.jsonl'
     os.makedirs('output', exist_ok=True)
+
+    # If resuming from Drive, copy files back to local first
+    if args.resume and drive_out:
+        for fname in ['synthetic_dataset.jsonl', 'rejections.jsonl']:
+            drive_path = os.path.join(drive_out, fname)
+            local_path = os.path.join('output', fname)
+            if os.path.exists(drive_path) and not os.path.exists(local_path):
+                import shutil
+                shutil.copy2(drive_path, local_path)
+                print(f"📥 Restored {fname} from Google Drive")
     
     processed_events = set()
     if args.resume and os.path.exists(out_file):
@@ -170,6 +194,13 @@ def main():
                     f.write(json.dumps(record) + '\n')
                     
         processed_events.add(event_id)
+
+        # Auto-sync to Google Drive after each event
+        if drive_out:
+            import shutil
+            for fname in [out_file, rej_file]:
+                if os.path.exists(fname):
+                    shutil.copy2(fname, os.path.join(drive_out, os.path.basename(fname)))
 
 if __name__ == "__main__":
     main()
