@@ -23,6 +23,8 @@ def generate_ollama(prompt: str, max_retries=3) -> dict:
             "stream": False,
             "format": "json",
             "options": {
+                "num_predict": 2048,
+                "num_ctx": 8192,
                 "temperature": 0.7
             }
         }
