@@ -23,7 +23,6 @@ def generate_ollama(prompt: str, max_retries=3) -> dict:
             "stream": False,
             "format": "json",
             "options": {
-                "num_predict": 512,
                 "temperature": 0.7
             }
         }
@@ -31,9 +30,17 @@ def generate_ollama(prompt: str, max_retries=3) -> dict:
             response = requests.post(OLLAMA_URL, json=payload, timeout=120)
             if response.status_code == 200:
                 result_text = response.json().get('response', '')
-                # Strip Qwen3 thinking tags if present
                 result_text = _re.sub(r'<think>.*?</think>', '', result_text, flags=_re.DOTALL).strip()
-                return json.loads(result_text)
+                # Strip markdown blocks if present
+                if result_text.startswith('```'):
+                    lines = result_text.split('\n')
+                    if lines[0].startswith('```'): lines = lines[1:]
+                    if lines and lines[-1].startswith('```'): lines = lines[:-1]
+                    result_text = '\n'.join(lines).strip()
+                try:
+                    return json.loads(result_text)
+                except Exception as e:
+                    print(f"JSON Parse Error (attempt {attempt+1}/{max_retries}): {e}\nRaw output snippet: {repr(result_text[:200])}...")
         except Exception as e:
             print(f"Error calling Ollama (attempt {attempt+1}/{max_retries}): {e}")
     return {}
