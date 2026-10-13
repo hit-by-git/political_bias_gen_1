@@ -158,16 +158,16 @@ def sanitize_headline(headline: str, blacklist: set) -> str:
     sanitized = headline
     # Common party patterns to replace with neutral generic tags
     replace_patterns = [
-        (r'\b(BJP|Bharatiya Janata Party)\b', 'Regional Ruling Party'),
-        (r'\b(Congress|INC)\b', 'Regional Opposition Party'),
-        (r'\b(AAP|Aam Aadmi Party)\b', 'Civic Council Party'),
-        (r'\b(TMC|Trinamool Congress)\b', 'State Council Party'),
-        (r'\b(JD\(U\)|JDU|RJD|SP|BSP|DMK|AIADMK)\b', 'Local Alliance'),
-        (r'\b(Narendra Modi|Modi)\b', 'Chief Patel'),
-        (r'\b(Rahul Gandhi|Rahul)\b', 'Candidate Rajesh'),
-        (r'\b(Mamata Banerjee|Mamata)\b', 'Mayor Verma'),
-        (r'\b(Arvind Kejriwal|Kejriwal)\b', 'Minister Sharma'),
-        (r'\b(Nitish Kumar|Nitish)\b', 'Secretary Bansal'),
+        (r'\b(BJP|Bharatiya Janata Party)\b', 'BJP|Bharatiya Janata Party'),
+        (r'\b(Congress|INC)\b', 'Congress|INC'),
+        (r'\b(AAP|Aam Aadmi Party)\b', 'AAP|Aam Aadmi Party'),
+        (r'\b(TMC|Trinamool Congress)\b', 'TMC|Trinamool Congress'),
+        (r'\b(JD\(U\)|JDU|RJD|SP|BSP|DMK|AIADMK)\b', 'JD\(U\)|JDU|RJD|SP|BSP|DMK|AIADMK'),
+        (r'\b(Narendra Modi|Modi)\b', 'Narendra Modi|Modi'),
+        (r'\b(Rahul Gandhi|Rahul)\b', 'Rahul Gandhi|Rahul'),
+        (r'\b(Mamata Banerjee|Mamata)\b', 'Mamata Banerjee|Mamata'),
+        (r'\b(Arvind Kejriwal|Kejriwal)\b', 'Arvind Kejriwal|Kejriwal'),
+        (r'\b(Nitish Kumar|Nitish)\b', 'Nitish Kumar|Nitish'),
     ]
     for pattern, replacement in replace_patterns:
         sanitized = _re.sub(pattern, replacement, sanitized, flags=_re.IGNORECASE)
@@ -231,7 +231,8 @@ def main():
     for col in ['Actor1Name', 'Actor2Name']:
         if col in df.columns:
             names = df[col].dropna().unique()
-            blacklist.update(str(n).strip() for n in names if str(n).strip())
+            # blacklist.update(str(n).strip() for n in names if str(n).strip())
+            continue
 
     blacklist_path = 'real_names.txt'
     if os.path.exists(blacklist_path):
@@ -239,15 +240,15 @@ def main():
             for line in f:
                 name = line.strip()
                 if name and not name.startswith('#'):
-                    blacklist.add(name)
+                    # blacklist.add(name)
     print(f"🚫 Blacklist: {len(blacklist)} names and terms")
 
     # ── Fictional actors pool ──
     fictional_actors_pool = [
-        "Candidate Rajesh", "Party Vikas", "Mayor Verma",
-        "Minister Sharma", "Councillor Nair", "Opposition Leader Gupta",
-        "Commissioner Iyer", "MLA Reddy", "Secretary Bansal",
-        "Activist Mehra", "Chief Patel", "Director Kapoor",
+        "Rahul Gandhi", "Sonia Gandhi", "Arvind Kejriwal",
+        "Mamata Banerjee", "Mallikarjun Kharge", "Akhilesh Yadav",
+        "Nitish Kumar", "Lalu Prasad Yadav", "Mayawati",
+        "Priyanka Gandhi", "Narendra Modi", "Sharad Pawar",
     ]
 
     # ── Output paths ──
