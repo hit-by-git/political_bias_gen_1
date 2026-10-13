@@ -241,6 +241,7 @@ def main():
                 name = line.strip()
                 if name and not name.startswith('#'):
                     # blacklist.add(name)
+                    continue
     print(f"🚫 Blacklist: {len(blacklist)} names and terms")
 
     # ── Fictional actors pool ──
