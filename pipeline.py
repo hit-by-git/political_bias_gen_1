@@ -154,7 +154,7 @@ def generate_llm(prompt: str, temperature: float = 0.7, max_retries: int = 3, is
 
 
 def sanitize_headline(headline: str, blacklist: set) -> str:
-    """Scrubs real party names and prominent politicians from headlines before prompt injection."""
+    """keep the names as is."""
     sanitized = headline
     # Common party patterns to replace with neutral generic tags
     replace_patterns = [
