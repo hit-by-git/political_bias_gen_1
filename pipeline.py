@@ -23,7 +23,7 @@ try:
 except ImportError:
     HAS_VLLM = False
 
-MODEL_NAME = "Qwen/Qwen2.5-14B-Instruct-AWQ"
+MODEL_NAME = "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int8"
 TENSOR_PARALLEL = 2  # 1 for single GPU, 2 for 2x T4 on Kaggle / Colab
 
 llm = None
