@@ -16,6 +16,10 @@ from prompts import (
 from mutators import extract_facts, mutate_fact
 from validators import validate_post, validate_article, extract_numbers
 
+# Bypass broken torchaudio CUDA mismatch on Kaggle (text LLMs do not use audio)
+import sys
+sys.modules['torchaudio'] = None
+
 # Try importing vllm; allow mock mode for testing without GPU
 try:
     from vllm import LLM, SamplingParams
