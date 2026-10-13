@@ -18,7 +18,14 @@ from validators import validate_post, validate_article, extract_numbers
 
 # Bypass broken torchaudio CUDA mismatch on Kaggle (text LLMs do not use audio)
 import sys
+import os
 sys.modules['torchaudio'] = None
+
+# Ensure current working directory is first in sys.path and PYTHONPATH so all subprocesses inherit sitecustomize.py
+_cwd = os.path.abspath(os.path.dirname(__file__))
+if _cwd not in sys.path:
+    sys.path.insert(0, _cwd)
+os.environ["PYTHONPATH"] = f"{_cwd}:{os.environ.get('PYTHONPATH', '')}"
 
 # Try importing vllm; allow mock mode for testing without GPU
 try:
@@ -33,27 +40,26 @@ TENSOR_PARALLEL = 2  # 1 for single GPU, 2 for 2x T4 on Kaggle / Colab
 llm = None
 
 
-def init_llm(tp_size: int = TENSOR_PARALLEL, model_name: str = MODEL_NAME, quantization: str = None):
+def init_llm(tp_size: int = TENSOR_PARALLEL, model_name: str = MODEL_NAME, quantization: str = None, max_model_len: int = 4096):
     global llm
     if llm is None and HAS_VLLM:
-        # Auto-detect quantization from model name if not explicitly set
+        # Auto-detect quantization: vLLM auto-detects GPTQ from config.json if quantization is None
         if quantization is None:
             name_lower = model_name.lower()
             if "awq" in name_lower:
                 quantization = "awq"
-            elif "gptq" in name_lower:
-                quantization = "gptq"
             elif "fp8" in name_lower:
                 quantization = "fp8"
             else:
-                quantization = None  # Full precision (FP16 / BF16)
+                quantization = None  # Let vLLM automatically inspect config.json for GPTQ or standard weights
 
-        print(f"Loading vLLM model {model_name} (TP={tp_size}, Quantization={quantization or 'None (Full Precision FP16)'})...")
+        print(f"Loading vLLM model {model_name} (TP={tp_size}, Quantization={quantization or 'Auto / Full Precision'})...")
         llm_kwargs = {
             "model": model_name,
-            "max_model_len": 4096,
+            "max_model_len": max_model_len,
             "gpu_memory_utilization": 0.90,
             "tensor_parallel_size": tp_size,
+            "trust_remote_code": True,
         }
         if quantization:
             llm_kwargs["quantization"] = quantization
@@ -180,6 +186,7 @@ def main():
     parser.add_argument('--data', type=str, default='data/gdelt_india_political_700.csv', help="Path to input GDELT CSV")
     parser.add_argument('--model', type=str, default=MODEL_NAME, help="Model name or HF path")
     parser.add_argument('--quantization', type=str, default=None, help="Quantization method (awq, gptq, fp8, or None for FP16)")
+    parser.add_argument('--max-model-len', type=int, default=4096, help="Maximum sequence context length for vLLM")
     parser.add_argument('--live', action='store_true', help="Pull fresh real-time GDELT articles before running")
     args = parser.parse_args()
 
@@ -195,7 +202,7 @@ def main():
             args.data = live_csv
 
     if not args.mock and HAS_VLLM:
-        init_llm(tp_size=args.tp, model_name=args.model, quantization=args.quantization)
+        init_llm(tp_size=args.tp, model_name=args.model, quantization=args.quantization, max_model_len=args.max_model_len)
     elif not HAS_VLLM and not args.mock:
         print("ℹ️ vLLM not available in this environment. Falling back to --mock test mode.")
         args.mock = True
