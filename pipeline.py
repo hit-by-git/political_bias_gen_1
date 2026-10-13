@@ -162,7 +162,7 @@ def sanitize_headline(headline: str, blacklist: set) -> str:
         (r'\b(Congress|INC)\b', 'Congress|INC'),
         (r'\b(AAP|Aam Aadmi Party)\b', 'AAP|Aam Aadmi Party'),
         (r'\b(TMC|Trinamool Congress)\b', 'TMC|Trinamool Congress'),
-        (r'\b(JD\(U\)|JDU|RJD|SP|BSP|DMK|AIADMK)\b', 'JD\(U\)|JDU|RJD|SP|BSP|DMK|AIADMK'),
+        (r'\b(JD\(U\)|JDU|RJD|SP|BSP|DMK|AIADMK)\b', 'JDU|RJD|SP|BSP|DMK|AIADMK'),
         (r'\b(Narendra Modi|Modi)\b', 'Narendra Modi|Modi'),
         (r'\b(Rahul Gandhi|Rahul)\b', 'Rahul Gandhi|Rahul'),
         (r'\b(Mamata Banerjee|Mamata)\b', 'Mamata Banerjee|Mamata'),
