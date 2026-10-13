@@ -1,67 +1,155 @@
 import re
 
+DEV_TO_LATIN = str.maketrans('०१२३४५६७८९', '0123456789')
+
+# Slang English to Devanagari mapping
+SLANG_MAP = {
+    "jumla": ["jumla", "जुमला"],
+    "dhokha": ["dhokha", "धोखा"],
+    "tamasha": ["tamasha", "तमाशा"],
+    "babu": ["babu", "बाबू"],
+    "ghotala": ["ghotala", "घोटाला"],
+    "loot": ["loot", "लूट"],
+    "dhandhli": ["dhandhli", "धांधली"],
+}
+
+WEEKDAY_MAP = {
+    'monday': ['monday', 'सोमवार'],
+    'tuesday': ['tuesday', 'मंगलवार'],
+    'wednesday': ['wednesday', 'बुधवार'],
+    'thursday': ['thursday', 'गुरुवार', 'बृहस्पतिवार'],
+    'friday': ['friday', 'शुक्रवार'],
+    'saturday': ['saturday', 'शनिवार'],
+    'sunday': ['sunday', 'रविवार']
+}
+
+
+def normalize_script(text: str) -> str:
+    """Normalizes Devanagari digits to standard Arabic numerals for uniform number comparison."""
+    return text.translate(DEV_TO_LATIN)
+
+
 def check_blacklist(text: str, blacklist: set) -> bool:
-    """Returns True if a blacklisted real name is found in the text."""
+    """Returns True if a blacklisted real political name or party is found in the text."""
     text_lower = text.lower()
     for name in blacklist:
-        if name.strip().lower() in text_lower:
-            return True
+        name_clean = name.strip().lower()
+        if not name_clean:
+            continue
+        # Use word boundaries for short acronyms like BJP, AAP, TMC, etc.
+        if len(name_clean) <= 4:
+            if re.search(rf'\b{re.escape(name_clean)}\b', text_lower):
+                return True
+        else:
+            if name_clean in text_lower:
+                return True
     return False
 
-def extract_numbers(text: str) -> set:
-    """Extracts all numbers from text for comparison."""
-    return set(re.findall(r'\b\d+(?:\.\d+)?\b', text))
 
-def validate_post(post: str, variant: str, orig: str, fake: str, slang: str, article_numbers: set, blacklist: set) -> tuple:
+def extract_numbers(text: str) -> set:
+    """Extracts all numbers from text after script normalization."""
+    normalized = normalize_script(text)
+    return set(re.findall(r'\b\d+(?:\.\d+)?\b', normalized))
+
+
+def match_fact_in_text(fact_str: str, text: str, extra_hi: str = "") -> bool:
+    """Checks if a fact (amount, count, day, or entity) is present in the text across English/Hindi."""
+    text_lower = normalize_script(text.lower())
+    fact_lower = normalize_script(fact_str.lower()) if fact_str else ""
+
+    # Check direct match
+    if fact_lower and fact_lower in text_lower:
+        return True
+
+    # Check Hindi equivalent if provided
+    if extra_hi and extra_hi.lower() in text_lower:
+        return True
+
+    # Check weekday mapping
+    for en_day, day_variants in WEEKDAY_MAP.items():
+        if fact_lower == en_day:
+            return any(v in text_lower for v in day_variants)
+
+    # For amounts (e.g. ₹2.1 crore) or counts (e.g. 5,000 people), extract the core number
+    nums = re.findall(r'\d+(?:\.\d+)?', fact_lower)
+    if nums:
+        core_num = nums[0]
+        # Verify the core number is present in the text
+        if core_num in extract_numbers(text_lower):
+            return True
+
+    return False
+
+
+def validate_article(article: str, blacklist: set) -> tuple:
+    """Validates the generated 3-sentence article for length and entity cleanliness."""
+    word_count = len(article.split())
+    if word_count < 20 or word_count > 90:
+        return False, f"Article length invalid ({word_count} words)"
+    if check_blacklist(article, blacklist):
+        return False, "Article contains blacklisted real entity"
+    return True, ""
+
+
+def validate_post(
+    post: str,
+    variant: str,
+    orig: str,
+    fake: str,
+    slang: str,
+    article_numbers: set,
+    blacklist: set,
+    orig_hi: str = "",
+    fake_hi: str = ""
+) -> tuple:
     """
-    Validates a post based on strict rules. 
+    Validates a post based on strict contrastive rules and multilingual support.
     Returns (is_valid, reason_string)
     """
-    
     # 1. Length constraint
     word_count = len(post.split())
-    if word_count < 8 or word_count > 60:
+    if word_count < 6 or word_count > 65:
         return False, f"Invalid length ({word_count} words)"
-        
+
     # 2. Blacklist constraint
     if check_blacklist(post, blacklist):
-        return False, "Contains blacklisted real name"
-        
-    # 3. Variant specific constraints
-    post_lower = post.lower()
-    orig_lower = str(orig).lower()
-    fake_lower = str(fake).lower()
-    
+        return False, "Contains blacklisted real name or party"
+
+    post_lower = normalize_script(post.lower())
+
+    # 3. Slang presence verification (for hard_negative and misinfo)
+    if variant in ["hard_negative", "misinfo"]:
+        slang_lower = slang.lower()
+        slang_variants = SLANG_MAP.get(slang_lower, [slang_lower])
+        if not any(s in post_lower for s in slang_variants):
+            return False, f"Missing required slang: {slang}"
+
+    # 4. Variant-specific fact consistency constraints
     if variant in ["neutral", "hard_negative"]:
-        if orig_lower not in post_lower:
+        if not match_fact_in_text(orig, post, orig_hi):
             return False, f"Missing original fact: {orig}"
-        if fake and fake_lower in post_lower:
+        if fake and match_fact_in_text(fake, post, fake_hi):
             return False, f"Contains fake fact in {variant} post: {fake}"
-            
-        if variant == "hard_negative" and slang.lower() not in post_lower:
-            return False, f"Missing required slang: {slang}"
-            
+
     elif variant == "misinfo":
-        if fake_lower not in post_lower:
+        if not match_fact_in_text(fake, post, fake_hi):
             return False, f"Missing fake fact: {fake}"
-        if orig_lower in post_lower:
+        if orig and match_fact_in_text(orig, post, orig_hi):
             return False, f"Contains original fact in misinfo post: {orig}"
-        if slang.lower() not in post_lower:
-            return False, f"Missing required slang: {slang}"
-            
-    # 4. Number hallucination constraint (lenient: skip small nums and years)
+
+    # 5. Hallucinated number constraint
     post_numbers = extract_numbers(post)
     allowed_numbers = article_numbers.copy()
     if variant == "misinfo" and fake:
         allowed_numbers.update(extract_numbers(fake))
     if orig:
         allowed_numbers.update(extract_numbers(orig))
-        
+
     for num in post_numbers:
-        # Skip single-digit numbers and year-like numbers (2020-2030) — these are common in social posts
+        # Skip small numbers (<=2 digits) and realistic years (2020-2030)
         if len(num) <= 2 or (num.isdigit() and 2020 <= int(num) <= 2030):
             continue
         if num not in allowed_numbers:
             return False, f"Hallucinated number not in article: {num}"
-            
+
     return True, ""

@@ -1,3 +1,4 @@
+# Political Leaders
 Narendra Modi
 Rahul Gandhi
 Amit Shah
@@ -9,3 +10,61 @@ Pinarayi Vijayan
 Hemant Soren
 Omar Abdullah
 Mallikarjun Kharge
+Nitish Kumar
+Sharad Pawar
+Uddhav Thackeray
+Akhilesh Yadav
+Mayawati
+Jagan Mohan Reddy
+Chandrababu Naidu
+K. Chandrashekar Rao
+M. Karunanidhi
+Jayalalithaa
+Sonia Gandhi
+Priyanka Gandhi
+Smriti Irani
+Rajnath Singh
+Nitin Gadkari
+
+# Political Parties & Coalitions
+Bharatiya Janata Party
+BJP
+Congress
+INC
+Aam Aadmi Party
+AAP
+Trinamool Congress
+TMC
+All India Trinamool Congress
+Samajwadi Party
+Bahujan Samaj Party
+BSP
+Janata Dal
+JD(U)
+JDU
+RJD
+Rashtriya Janata Dal
+Dravida Munnetra Kazhagam
+DMK
+AIADMK
+Telugu Desam Party
+TDP
+YSR Congress
+YSRCP
+Shiv Sena
+Nationalist Congress Party
+NCP
+Communist Party of India
+CPI
+CPI(M)
+CPIM
+NDA
+INDIA alliance
+UPA
+
+# Geopolitical & Conflict Terms
+Article 370
+Kashmir
+Pakistan
+Balakot
+Khalistan

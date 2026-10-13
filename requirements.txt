@@ -2,3 +2,4 @@ pandas
 tqdm
 requests
 vllm
+beautifulsoup4
