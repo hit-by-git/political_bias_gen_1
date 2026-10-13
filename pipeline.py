@@ -154,24 +154,8 @@ def generate_llm(prompt: str, temperature: float = 0.7, max_retries: int = 3, is
 
 
 def sanitize_headline(headline: str, blacklist: set) -> str:
-    """keep the names as is."""
-    sanitized = headline
-    # Common party patterns to replace with neutral generic tags
-    replace_patterns = [
-        (r'\b(BJP|Bharatiya Janata Party)\b', 'BJP|Bharatiya Janata Party'),
-        (r'\b(Congress|INC)\b', 'Congress|INC'),
-        (r'\b(AAP|Aam Aadmi Party)\b', 'AAP|Aam Aadmi Party'),
-        (r'\b(TMC|Trinamool Congress)\b', 'TMC|Trinamool Congress'),
-        (r'\b(JD\(U\)|JDU|RJD|SP|BSP|DMK|AIADMK)\b', 'JDU|RJD|SP|BSP|DMK|AIADMK'),
-        (r'\b(Narendra Modi|Modi)\b', 'Narendra Modi|Modi'),
-        (r'\b(Rahul Gandhi|Rahul)\b', 'Rahul Gandhi|Rahul'),
-        (r'\b(Mamata Banerjee|Mamata)\b', 'Mamata Banerjee|Mamata'),
-        (r'\b(Arvind Kejriwal|Kejriwal)\b', 'Arvind Kejriwal|Kejriwal'),
-        (r'\b(Nitish Kumar|Nitish)\b', 'Nitish Kumar|Nitish'),
-    ]
-    for pattern, replacement in replace_patterns:
-        sanitized = _re.sub(pattern, replacement, sanitized, flags=_re.IGNORECASE)
-    return sanitized
+    """Keep the names and headlines as is."""
+    return headline
 
 
 # ─── MAIN ───────────────────────────────────────────────────────────────────
@@ -222,9 +206,16 @@ def main():
     # ── Load GDELT data ──
     data_path = args.data
     df = pd.read_csv(data_path)
+
+    # Ensure every event has a globally unique ID (use GLOBALEVENTID if present)
+    if 'GLOBALEVENTID' in df.columns:
+        df['event_id'] = df['GLOBALEVENTID']
+    elif 'event_id' not in df.columns or df['event_id'].nunique() <= 2:
+        df['event_id'] = df.index + 1
+
     if args.limit:
         df = df.head(args.limit)
-    print(f"📊 Loaded {len(df)} rows ({df['event_id'].nunique() if 'event_id' in df.columns else len(df)} unique events) from {data_path}")
+    print(f"📊 Loaded {len(df)} rows ({df['event_id'].nunique()} unique events) from {data_path}")
 
     # ── Build blacklist ──
     blacklist = set()
