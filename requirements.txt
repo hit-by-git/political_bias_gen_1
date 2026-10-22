@@ -1,3 +1,10 @@
+torch
+transformers
+datasets
+accelerate
+scikit-learn
+sentencepiece
+protobuf
 pandas
 tqdm
 requests

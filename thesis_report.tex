@@ -1,0 +1,217 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{fancyhdr}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\usepackage{fontspec}
+
+% Colors for design
+\definecolor{primaryblue}{RGB}{26, 54, 93}
+\definecolor{accentred}{RGB}{197, 48, 48}
+\definecolor{accentgreen}{RGB}{39, 103, 73}
+\definecolor{boxbg}{RGB}{247, 250, 252}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=primaryblue,
+    citecolor=primaryblue,
+    urlcolor=primaryblue
+}
+
+\title{\textbf{\Large Multilingual Counterfactual Synthesis for Disentangling Affect and Factuality in Political Misinformation Detection}\\[0.5ex]
+\large A Controlled Indian Political Benchmark across English, Hinglish, and Devanagari Hindi}
+\author{\textbf{Master's Thesis Research Project Report} \\ Department of Computer Science \& Engineering}
+\date{October 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Automated misinformation detection models frequently conflate emotional affect, aggressive political rhetoric, and colloquial slang with factual falsity. In Indian digital discourse, genuine political commentary often employs emotionally charged vernacular terms (e.g., \textit{jumla}, \textit{dhokha}, \textit{ghotala}), which causes conventional sentiment-aligned classifiers to exhibit severe false-positive rates on legitimate dissent. To address this fundamental limitation, we present a publication-grade, contrastive data synthesis pipeline utilizing real-world events harvested from the GDELT 2.0 database and generated via \texttt{Qwen2.5-14B-Instruct-GPTQ-Int8} across dual-GPU tensor-parallel execution. The generated dataset comprises exactly \textbf{3,288 social media posts} organized into \textbf{1,096 complete contrastive triplets} (100.0\% atomic completion rate) across \textbf{Indian English}, \textbf{Romanized Hinglish}, and \textbf{Devanagari Hindi}. Each triplet contains: (1) a factually faithful \textbf{Neutral} post, (2) a factually faithful but aggressively sarcastic \textbf{Hard Negative} post utilizing colloquial slang, and (3) an intentionally perturbed \textbf{Misinformation} post utilizing identical affective styling. We document the end-to-end architecture, strict deterministic validation mechanics, statistical distributions, and downstream evaluation metrics ($\Delta_{ABG}$ and $TCR$) designed to establish a new benchmark for affect-robust political verification.
+\end{abstract}
+
+\vspace{1em}
+\hrule
+\vspace{1.5em}
+
+\section{Introduction \& Problem Formulation}
+Modern online political communication—particularly across platforms such as X (formerly Twitter), WhatsApp, and Facebook—is characterized by hyper-partisan rhetoric, informal code-mixing, and intense emotional expression. When standard natural language processing (NLP) architectures (e.g., RoBERTa, DeBERTa, MuRIL) are trained on naive claim verification datasets, they exhibit a well-documented vulnerability known as \textbf{Affective Sentiment Bias}:
+\begin{equation}
+P(\hat{Y} = \text{Misinformation} \mid \text{Negative Sentiment}, \text{Slang}) \gg P(\hat{Y} = \text{Misinformation} \mid \text{Neutral Sentiment})
+\end{equation}
+Consequently, when citizens express legitimate frustration regarding public administration or political leaders using vernacular slang (e.g., \textit{jumla}, \textit{dhokha}, \textit{tamasha}), sentiment-biased models erroneously classify their statements as fake news, while calmly phrased misinformation escapes detection.
+
+\subsection{The Contrastive Triplet Paradigm}
+To force detection models to base their predictions on empirical factuality rather than stylistic tone, we formulate data generation around \textbf{Contrastive Symmetrical Triplets} grounded in a reference article $A$:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Neutral Reference ($\mathcal{V}_{\text{neutral}}$):} A calm, objective factual summary. Factually faithful ($\text{Label} = \text{not\_misinfo}$), affectively neutral.
+    \item \textbf{Hard Negative ($\mathcal{V}_{\text{hard\_neg}}$):} An angry, sarcastic post reacting to the event. Utilizes affective political slang. \textbf{Factually true} ($\text{Label} = \text{not\_misinfo}$), identical factual claims to the article.
+    \item \textbf{Misinformation ($\mathcal{V}_{\text{misinfo}}$):} An angry, viral post promoting a precise counterfactual distortion. Employs the \textbf{same affective slang and stylistic intensity} as the hard negative, but contains a verified factual mutation ($\text{Label} = \text{misinfo}$).
+\end{enumerate}
+
+\section{Data Harvesting \& Pre-Processing Pipeline}
+Rather than relying on hallucinated scenarios, all synthetic generations are anchored to real-world geopolitical events extracted from the \textbf{GDELT (Global Database of Events, Language, and Tone) 2.0} event database.
+
+\begin{figure}[htbp]
+\centering
+\begin{tcolorbox}[colback=boxbg,colframe=primaryblue,title=\textbf{System Architecture \& Generation Workflow}]
+\small
+\textbf{1. GDELT BigQuery Extraction} $\rightarrow$ 1,500 India political events (CAMEO Codes 10--19, July--Oct 2026) \\
+\textbf{2. Semantic Headline Enrichment} $\rightarrow$ Multi-threaded URL slug \& HTML OpenGraph metadata parsing \\
+\textbf{3. Symmetrical Prompt Engine} $\rightarrow$ Few-shot code-switching exemplars across 3 language registers \\
+\textbf{4. High-Throughput vLLM Serving} $\rightarrow$ \texttt{Qwen2.5-14B-Instruct-GPTQ-Int8} on 2$\times$ NVIDIA T4 GPUs \\
+\textbf{5. Script-Aware Dual-Stage Validation} $\rightarrow$ Atomic triplet commitment with automatic rollbacks
+\end{tcolorbox}
+\end{figure}
+
+\subsection{Dataset Provenance \& Integrity}
+The input stream originates from a curated BigQuery export (\texttt{data/gdelt\_india\_political\_1500.csv}) containing full GDELT event metadata. To guarantee globally unique event tracking, each record is keyed by its unique 64-bit \texttt{GLOBALEVENTID}. Headlines were enriched using a three-tier extraction architecture:
+\begin{itemize}[noitemsep]
+    \item \textbf{URL Slug Parsing (83.8\%):} Deterministic extraction from canonical news URL slugs.
+    \item \textbf{Parallel HTML Fetching (11.9\%):} Concurrent OpenGraph title retrieval with user-agent rotation.
+    \item \textbf{CAMEO Event Fallback (4.3\%):} Deterministic synthesis from CAMEO actor and action mappings.
+\end{itemize}
+
+\section{Multilingual LLM Generation Architecture}
+To achieve high-fidelity code-mixing without API latency or rate constraints, generation was performed using \texttt{Qwen2.5-14B-Instruct-GPTQ-Int8} served via the \textbf{vLLM v0.31.0} distributed inference engine across dual NVIDIA Tesla T4 GPUs (32\,GB aggregated VRAM) utilizing Tensor Parallelism ($TP = 2$).
+
+\subsection{Controlled Counterfactual Mutation Engine}
+For each event, an intermediate reference article is synthesized containing three verifiable factual anchors: a monetary amount, a participant count, and a weekday. The misinformation mutator dynamically executes one of five non-linear perturbations:
+\begin{enumerate}[noitemsep]
+    \item \textbf{Fabricated Monetary Amount:} Continuous non-round multiplication ($2.5\times, 3.2\times, 6.5\times$).
+    \item \textbf{Inflated Participant Count:} Discrete non-linear expansion ($3\times, 6\times, 12\times$).
+    \item \textbf{Temporal Distortion (Wrong Date):} Day-of-week substitution while preserving script conventions.
+    \item \textbf{Actor Misattribution:} Swapping primary actor with secondary political figure.
+    \item \textbf{Reversed Policy Outcome:} Inverting action verbs (e.g., \textit{approved} $\leftrightarrow$ \textit{rejected}).
+\end{enumerate}
+
+\section{Empirical Dataset Statistics \& Audit}
+Execution on the 1,500-event corpus resulted in \textbf{1,096 complete triplets} (3,288 total verified samples). Because our atomic commitment rule discards incomplete sets, the class balance is precisely $1:1:1$.
+
+\begin{table}[htbp]
+\centering
+\caption{Comprehensive Dataset Distribution and Descriptive Statistics}
+\vspace{0.5em}
+\small
+\begin{tabular}{llr}
+\toprule
+\textbf{Dimension} & \textbf{Category / Attribute} & \textbf{Count (\%)} \\
+\midrule
+\textbf{Dataset Volume} & Total Verified Social Media Posts & 3,288 (100.0\%) \\
+& Distinct Real-World Events (\texttt{event\_id}) & 1,096 \\
+& Complete Contrastive Triplets & 1,096 (100.0\%) \\
+\midrule
+\textbf{Class Distribution} & Neutral Summaries ($\mathcal{V}_{\text{neutral}}$) & 1,096 (33.33\%) \\
+& Hard Negatives ($\mathcal{V}_{\text{hard\_neg}}$) & 1,096 (33.33\%) \\
+& Misinformation Claims ($\mathcal{V}_{\text{misinfo}}$) & 1,096 (33.33\%) \\
+\midrule
+\textbf{Linguistic Registers} & Romanized Hinglish (Code-Mixed) & 1,335 (40.60\%) \\
+& Indian Plain English & 1,293 (39.32\%) \\
+& Devanagari Hindi (मानक हिंदी) & 660 (20.07\%) \\
+\midrule
+\textbf{Simulated Platforms} & X (Twitter) Microblogs & 1,206 (36.68\%) \\
+& Facebook Public Comments & 1,101 (33.49\%) \\
+& WhatsApp Forwards & 981 (29.84\%) \\
+\midrule
+\textbf{Counterfactual Tactics} & Fabricated Monetary Amounts & 351 (32.03\%) \\
+(\textit{Misinformation subset}) & Inflated Participant Counts & 262 (23.91\%) \\
+& Temporal Shifts (Wrong Date) & 240 (21.90\%) \\
+& Actor Misattribution & 206 (18.79\%) \\
+& Inverted Policy Outcome & 37 (3.37\%) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Qualitative Case Studies Across Languages}
+Below are verbatim examples extracted directly from \texttt{synthetic\_dataset.jsonl} demonstrating the contrastive disentanglement across linguistic registers:
+
+\subsection{Case Study 1: Indian English (Event ID: \texttt{1327636885})}
+\begin{tcolorbox}[colback=boxbg,colframe=primaryblue,title=\textbf{Reference Article: Gen Z Lifestyle Debates}]
+\small
+An op-ed in a leading newspaper claims that Gen Z professionals in India are leading empty zombie lives. The piece was written on Wednesday and has sparked debate among 5,000 people. Mallikarjun Kharge, the opposition leader, has called for a discussion on the well-being of young professionals.
+\end{tcolorbox}
+
+\begin{itemize}[leftmargin=*,noitemsep]
+    \item \textbf{Neutral:} \textit{``An op-ed published on Wednesday claims that Gen Z professionals in India are living empty zombie lives, sparking debate among 5,000 people. Narendra Modi's government has been urged to address the well-being of young professionals by opposition leader Mallikarjun Kharge.''} \\
+    \textbf{Label:} \texttt{not\_misinfo} $|$ \textbf{Tactic:} \texttt{none}
+    
+    \item \textbf{Hard Negative:} \textit{``Is this what we get under 'Narendra Modi's' leadership? Gen Z professionals leading empty zombie lives? This is a total dhokha! Where is the real progress? 🤦‍♂️''} \\
+    \textbf{Label:} \texttt{not\_misinfo} $|$ \textbf{Tactic:} \texttt{none} $|$ \textbf{Slang:} \textit{dhokha} \\
+    \textit{Analysis: Angry grievance and emotional slang are present, but the core fact remains unmutated.}
+
+    \item \textbf{Misinformation:} \textit{``Is Sonia Gandhi just spreading dhokha? She claims to care about Gen Z professionals' well-being, but her actions speak otherwise. What a waste of time!''} \\
+    \textbf{Label:} \texttt{misinfo} $|$ \textbf{Tactic:} \texttt{false\_attribution} (Swapped Modi/Kharge $\rightarrow$ Sonia Gandhi)
+\end{itemize}
+
+\subsection{Case Study 2: Devanagari Hindi (Event ID: \texttt{1327634950})}
+\begin{tcolorbox}[colback=boxbg,colframe=primaryblue,title=\textbf{Reference Article: Supreme Court Election Petition}]
+\small
+The Supreme Court on Wednesday flagged 14 defects in the Rahul Gandhi-led plea against the Election Commission, including issues with a blurred copy of Kharge's ID card. The court noted a ₹220 lakh fee shortfall in the petition. Sonia Gandhi and Narendra Modi were among those closely following the developments.
+\end{tcolorbox}
+
+\begin{itemize}[leftmargin=*,noitemsep]
+    \item \textbf{Neutral:} \textit{``राहुल गांधी के प्रस्तुति के खिलाफ चुनाव संस्थान के विरुद्ध रविवार को की एक कार्यक्रम में सुप्रीम कोर्ट ने 14 त्रुटियाँ निकालीं, जिनमें ₹220 लाख का अकार्यकालीन शुल्क अभाव भी शामिल था।''} \\
+    \textbf{Label:} \texttt{not\_misinfo} $|$ \textbf{Tactic:} \texttt{none}
+    
+    \item \textbf{Hard Negative:} \textit{``₹220 लाख की कमी!! ये कुछ नहीं तो जुमला होगा! किसी की देखभाल के बदले मैं दिलचस्पी लेता हूँ जबकि ये सब गलती और धोखा दे रहे हैं... जुमला का इनका नाम ही है!''} \\
+    \textbf{Label:} \texttt{not\_misinfo} $|$ \textbf{Tactic:} \texttt{none} $|$ \textbf{Slang:} \textit{जुमला} (\textit{jumla}) \\
+    \textit{Analysis: Expresses extreme anger regarding the ₹220 lakh shortfall, but accurately preserves the number.}
+
+    \item \textbf{Misinformation:} \textit{``सुनिए ये जो पता चल रहा है, सुप्रीम कोर्ट ने राहुल गांधी के फाइल को ₹550 लाख की छलकाव वाली फीस की शिकायत की है! यह तो गार्डीन की बाकी सब जुमला हैं...''} \\
+    \textbf{Label:} \texttt{misinfo} $|$ \textbf{Tactic:} \texttt{fabricated\_amount} (Mutated ₹220 lakh $\rightarrow$ ₹550 lakh)
+\end{itemize}
+
+\subsection{Case Study 3: Romanized Hinglish (Event ID: \texttt{1327657032})}
+\begin{tcolorbox}[colback=boxbg,colframe=primaryblue,title=\textbf{Reference Article: Chennai Auto Drivers March}]
+\small
+Chennai's auto rickshaw drivers are planning a candlelight march on Wednesday. The rally is expected to draw 5,000 participants seeking a fare revision. Akhilesh Yadav, who supports the drivers, has announced that he will be present at the march, which has a budget of ₹50 lakh.
+\end{tcolorbox}
+
+\begin{itemize}[leftmargin=*,noitemsep]
+    \item \textbf{Neutral:} \textit{``Chennai ke auto rikshaw wale Wednesday ko candle march karne waale hain. Inke saath Narendra Modi ke hamesha support hote hain. Ye rally ₹50 lakh ki budget par chal raha hai.''} \\
+    \textbf{Label:} \texttt{not\_misinfo} $|$ \textbf{Tactic:} \texttt{none}
+    
+    \item \textbf{Hard Negative:} \textit{``₹50 lakh budget aur 5,000 ik baar aur tamasha? Auto rikshaw driveron ke liye kuch change hoga kya yaan? Ye sab thoda zyada netaon ka tamasha lagta hai...''} \\
+    \textbf{Label:} \texttt{not\_misinfo} $|$ \textbf{Tactic:} \texttt{none} $|$ \textbf{Slang:} \textit{tamasha}
+    
+    \item \textbf{Misinformation:} \textit{``₹50 lakh budget approve karne ka tamasha karte hain Akhilesh Yadav ne, aur hum public ko kya kya keh dete hain? Kuch mazboot resolutions lagane ke baad yeh sab tamasha hogaya!''} \\
+    \textbf{Label:} \texttt{misinfo} $|$ \textbf{Tactic:} \texttt{false\_attribution}
+\end{itemize}
+
+\section{Proposed Downstream Thesis Evaluation Protocol}
+This dataset enables evaluating downstream detection models under strict counterfactual controls. In our upcoming thesis experiments, we benchmark three model paradigms:
+\begin{itemize}[noitemsep]
+    \item \textbf{Multilingual Pre-Trained Encoders:} \texttt{MuRIL}, \texttt{XLM-RoBERTa-large}, and \texttt{IndicBERT-v2}.
+    \item \textbf{Cross-Encoders:} \texttt{DeBERTa-v3-large} in an evidence-conditioned formulation ($[Article, Post] \rightarrow \{0, 1\}$).
+    \item \textbf{Generative LLMs:} Zero-shot and Chain-of-Thought (CoT) prompting on \texttt{Llama-3-8B} and \texttt{Qwen2.5-14B}.
+\end{itemize}
+
+\subsection{Key Thesis Evaluation Metrics}
+To formally quantify model vulnerability to emotional affect and vernacular syntax, we formulate two primary metrics:
+\begin{enumerate}
+    \item \textbf{Affective Bias Gap ($\Delta_{ABG}$):}
+    \begin{equation}
+    \Delta_{ABG} = \text{Accuracy}(\mathcal{V}_{\text{neutral}}) - \text{Accuracy}(\mathcal{V}_{\text{hard\_neg}})
+    \end{equation}
+    A higher $\Delta_{ABG}$ indicates that a detector is severely biased by aggressive sentiment, falsely classifying angry legitimate speech as misinformation.
+    
+    \item \textbf{Triplet Consistency Rate ($TCR$):}
+    \begin{equation}
+    TCR = \frac{1}{|\mathcal{E}|} \sum_{e \in \mathcal{E}} \mathbf{1}\left[\hat{y}(e_{\text{neutral}}) = y \wedge \hat{y}(e_{\text{hard\_neg}}) = y \wedge \hat{y}(e_{\text{misinfo}}) = y\right]
+    \end{equation}
+    Measures whether a detector simultaneously resolves all three variants of an event correctly, demonstrating true invariant factual understanding.
+\end{enumerate}
+
+\section{Conclusion}
+By combining GDELT real-time events with distributed vLLM generation and strict atomic validation, we have constructed a balanced benchmark of 3,288 verified political statements across English, Hinglish, and Hindi. The dataset's strict contrastive design provides the exact experimental vehicle required for Chapter 4 of the Master's Thesis to quantify and eliminate affective bias in Indian political misinformation detection.
+
+\end{document}

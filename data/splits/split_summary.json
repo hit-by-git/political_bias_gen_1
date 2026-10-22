@@ -1,0 +1,65 @@
+{
+  "train": {
+    "num_events": 768,
+    "num_posts": 2304,
+    "variants": {
+      "neutral": 768,
+      "hard_negative": 768,
+      "misinfo": 768
+    },
+    "languages": {
+      "Devanagari Hindi": 462,
+      "Hinglish (Roman script)": 936,
+      "plain English": 906
+    },
+    "tactics": {
+      "fabricated_amount": 246,
+      "false_attribution": 145,
+      "inflated_count": 183,
+      "reversed_outcome": 26,
+      "wrong_date": 168
+    }
+  },
+  "val": {
+    "num_events": 165,
+    "num_posts": 495,
+    "variants": {
+      "neutral": 165,
+      "hard_negative": 165,
+      "misinfo": 165
+    },
+    "languages": {
+      "Devanagari Hindi": 96,
+      "Hinglish (Roman script)": 201,
+      "plain English": 198
+    },
+    "tactics": {
+      "fabricated_amount": 53,
+      "inflated_count": 39,
+      "false_attribution": 31,
+      "reversed_outcome": 6,
+      "wrong_date": 36
+    }
+  },
+  "test": {
+    "num_events": 163,
+    "num_posts": 489,
+    "variants": {
+      "neutral": 163,
+      "hard_negative": 163,
+      "misinfo": 163
+    },
+    "languages": {
+      "Devanagari Hindi": 102,
+      "Hinglish (Roman script)": 198,
+      "plain English": 189
+    },
+    "tactics": {
+      "fabricated_amount": 52,
+      "inflated_count": 40,
+      "false_attribution": 30,
+      "reversed_outcome": 5,
+      "wrong_date": 36
+    }
+  }
+}

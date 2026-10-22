@@ -2,3 +2,7 @@
 __pycache__/
 *.pyc
 output/
+experiments/checkpoints/
+*.pt
+*.bin
+*.safetensors
