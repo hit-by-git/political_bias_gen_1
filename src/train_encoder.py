@@ -114,6 +114,8 @@ def main():
 
     try:
         import torch
+        import datasets
+        import accelerate
         from transformers import (
             AutoTokenizer,
             AutoModelForSequenceClassification,
@@ -122,7 +124,7 @@ def main():
             set_seed
         )
     except ImportError as e:
-        print(f"❌ Error: Missing dependency: {e}. Install via: pip install torch transformers datasets accelerate")
+        print(f"❌ Error: Missing dependency ({e}). Install via: pip install torch transformers datasets accelerate")
         sys.exit(1)
 
     set_seed(args.seed)
