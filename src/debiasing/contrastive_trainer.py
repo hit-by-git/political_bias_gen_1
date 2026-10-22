@@ -54,7 +54,8 @@ def main():
         import torch
         import torch.nn as nn
         from torch.utils.data import Dataset, DataLoader
-        from transformers import AutoTokenizer, AutoModelForSequenceClassification, get_linear_schedule_with_warmup, set_seed
+        from transformers import AutoTokenizer, AutoModelForSequenceClassification, set_seed
+        from torch.optim.lr_scheduler import LambdaLR
     except ImportError as e:
         print(f"❌ Error: Missing dependency: {e}. Install via: pip install torch transformers")
         sys.exit(1)
@@ -84,7 +85,12 @@ def main():
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
     total_steps = len(event_list) * args.epochs // args.batch_size
-    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=int(total_steps * 0.1), num_training_steps=total_steps)
+    num_warmup_steps = int(total_steps * 0.1)
+    def lr_lambda(current_step: int) -> float:
+        if current_step < num_warmup_steps:
+            return float(current_step) / float(max(1, num_warmup_steps))
+        return max(0.0, float(total_steps - current_step) / float(max(1, total_steps - num_warmup_steps)))
+    scheduler = LambdaLR(optimizer, lr_lambda)
     ce_loss_fn = nn.CrossEntropyLoss()
     mse_loss_fn = nn.MSELoss()
 
