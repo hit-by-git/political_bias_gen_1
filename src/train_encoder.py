@@ -3,18 +3,24 @@
 src/train_encoder.py
 
 Fine-tunes transformer cross-encoders (MuRIL, IndicBERT, XLM-RoBERTa, DeBERTa)
-for both:
+using native PyTorch with mixed precision (AMP) and linear warmup.
+
+Does NOT depend on HuggingFace `Trainer` or `accelerate`, preventing any
+dependency conflict or lazy-import errors on Kaggle / Colab.
+
+Supports:
 1. Task A: Post-Only Classification (exposing affective shortcuts)
 2. Task B: Evidence-Conditioned Claim Verification (measuring factual grounding)
 
 Automatically evaluates on the test split, computes counterfactual metrics
-(Macro-F1, Δ_ABG, TCR, Δ_CL), and exports results.
+(Macro-F1, Δ_ABG, TCR, Δ_CL), and exports Overleaf LaTeX tables.
 """
 
 import os
 import sys
 import json
 import argparse
+import inspect
 from typing import Dict, List, Any
 
 # Ensure project root is in sys.path
@@ -32,52 +38,57 @@ def load_jsonl(file_path: str) -> List[Dict[str, Any]]:
     return records
 
 
-def prepare_hf_dataset(records: List[Dict[str, Any]], tokenizer, task: str, max_length: int):
-    """Tokenize dataset for either post_only or evidence_conditioned task."""
-    from datasets import Dataset
-
-    texts_a = []
-    texts_b = []
-    labels = []
-
-    for r in records:
-        lbl = 1 if r["label"] == "misinfo" else 0
-        labels.append(lbl)
-
-        if task == "post_only":
-            texts_a.append(r["post"])
-            texts_b.append(None)
-        elif task == "evidence_conditioned":
-            texts_a.append(r["article"])
-            texts_b.append(r["post"])
-        else:
-            raise ValueError(f"Unknown task: {task}. Choose 'post_only' or 'evidence_conditioned'.")
-
-    if task == "post_only":
-        encodings = tokenizer(
-            texts_a,
-            truncation=True,
-            padding=True,
-            max_length=max_length,
-            return_tensors=None
-        )
-    else:
-        encodings = tokenizer(
-            texts_a,
-            texts_b,
-            truncation=True,
-            padding=True,
-            max_length=max_length,
-            return_tensors=None
-        )
-
-    encodings["label"] = labels
-    return Dataset.from_dict(encodings)
-
-
 def get_model_slug(model_name: str) -> str:
     """Creates a filesystem-safe slug from model name."""
     return model_name.strip("/").replace("/", "_").replace(".", "_").lower()
+
+
+class PostDataset:
+    """Lightweight PyTorch Dataset for single and paired texts."""
+    def __init__(self, records: List[Dict[str, Any]], task: str):
+        self.records = records
+        self.task = task
+
+    def __len__(self):
+        return len(self.records)
+
+    def __getitem__(self, idx):
+        r = self.records[idx]
+        lbl = 1 if r["label"] == "misinfo" else 0
+        if self.task == "post_only":
+            return r["post"], None, lbl
+        else:
+            return r["article"], r["post"], lbl
+
+
+def make_collate_fn(tokenizer, max_length: int, task: str):
+    import torch
+    def collate_fn(batch):
+        texts_a = [item[0] for item in batch]
+        texts_b = [item[1] for item in batch] if task == "evidence_conditioned" else None
+        labels = torch.tensor([item[2] for item in batch], dtype=torch.long)
+
+        if texts_b is not None:
+            inputs = tokenizer(
+                texts_a,
+                texts_b,
+                max_length=max_length,
+                padding=True,
+                truncation=True,
+                return_tensors="pt"
+            )
+        else:
+            inputs = tokenizer(
+                texts_a,
+                max_length=max_length,
+                padding=True,
+                truncation=True,
+                return_tensors="pt"
+            )
+
+        inputs["labels"] = labels
+        return inputs
+    return collate_fn
 
 
 def main():
@@ -114,112 +125,169 @@ def main():
 
     try:
         import torch
-        import datasets
-        import accelerate
+        import torch.nn as nn
+        from torch.utils.data import DataLoader
         from transformers import (
             AutoTokenizer,
             AutoModelForSequenceClassification,
-            Trainer,
-            TrainingArguments,
+            get_linear_schedule_with_warmup,
             set_seed
         )
     except ImportError as e:
-        print(f"❌ Error: Missing dependency ({e}). Install via: pip install torch transformers datasets accelerate")
+        print(f"❌ Error: Missing dependency ({e}). Install via: pip install torch transformers")
         sys.exit(1)
 
     set_seed(args.seed)
+    device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
+    use_cuda = (device.type == "cuda")
 
     print(f"\n{'=' * 65}")
-    print(f"🚀 INITIATING ENCODER TRAINING")
+    print(f"🚀 INITIATING ENCODER TRAINING (PyTorch Native)")
     print(f"• Model:      {args.model_name_or_path}")
+    print(f"• Device:     {device} ({torch.cuda.get_device_name(0) if use_cuda else 'CPU'})")
     print(f"• Task:       {args.task}")
     print(f"• Epochs:     {args.epochs} | Batch Size: {args.batch_size} | LR: {args.lr}")
-    print(f"• Max Length: {args.max_seq_length}")
+    print(f"• Max Length: {args.max_seq_length} | FP16: {args.fp16 and use_cuda}")
     print(f"{'=' * 65}\n")
 
-    # Load splits
+    # Load data splits
     train_recs = load_jsonl(args.train_file)
     val_recs = load_jsonl(args.val_file)
     test_recs = load_jsonl(args.test_file)
 
-    print(f"📂 Loaded: Train={len(train_recs)}, Val={len(val_recs)}, Test={len(test_recs)}")
+    print(f"📂 Loaded: Train={len(train_recs)} posts, Val={len(val_recs)} posts, Test={len(test_recs)} posts")
 
     # Initialize Tokenizer & Model
+    print("⏳ Loading tokenizer and model weights...")
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
     model = AutoModelForSequenceClassification.from_pretrained(
         args.model_name_or_path,
         num_labels=2,
         id2label={0: "not_misinfo", 1: "misinfo"},
         label2id={"not_misinfo": 0, "misinfo": 1}
-    )
+    ).to(device)
 
-    train_dataset = prepare_hf_dataset(train_recs, tokenizer, args.task, args.max_seq_length)
-    val_dataset = prepare_hf_dataset(val_recs, tokenizer, args.task, args.max_seq_length)
-    test_dataset = prepare_hf_dataset(test_recs, tokenizer, args.task, args.max_seq_length)
+    # Datasets and DataLoaders
+    collate_fn = make_collate_fn(tokenizer, args.max_seq_length, args.task)
+    train_loader = DataLoader(
+        PostDataset(train_recs, args.task),
+        batch_size=args.batch_size,
+        shuffle=True,
+        collate_fn=collate_fn
+    )
+    val_loader = DataLoader(
+        PostDataset(val_recs, args.task),
+        batch_size=args.batch_size,
+        shuffle=False,
+        collate_fn=collate_fn
+    )
+    test_loader = DataLoader(
+        PostDataset(test_recs, args.task),
+        batch_size=args.batch_size,
+        shuffle=False,
+        collate_fn=collate_fn
+    )
 
     slug = get_model_slug(args.model_name_or_path)
     run_name = f"{slug}_{args.task}"
     model_ckpt_dir = os.path.join(args.output_dir, run_name)
+    os.makedirs(model_ckpt_dir, exist_ok=True)
     os.makedirs(args.results_dir, exist_ok=True)
 
-    use_cuda = torch.cuda.is_available()
-    
-    # Ensure compatibility across transformers versions (v4.41+ uses eval_strategy)
-    import inspect
-    sig = inspect.signature(TrainingArguments.__init__)
-    eval_key = "eval_strategy" if "eval_strategy" in sig.parameters else "evaluation_strategy"
-
-    training_kwargs = {
-        "output_dir": model_ckpt_dir,
-        "num_train_epochs": args.epochs,
-        "per_device_train_batch_size": args.batch_size,
-        "per_device_eval_batch_size": args.batch_size,
-        "learning_rate": args.lr,
-        eval_key: "epoch",
-        "save_strategy": "epoch",
-        "load_best_model_at_end": True,
-        "metric_for_best_model": "eval_loss",
-        "greater_is_better": False,
-        "fp16": args.fp16 and use_cuda,
-        "logging_steps": 20,
-        "save_total_limit": 1,
-        "seed": args.seed,
-        "report_to": "none"
-    }
-    training_args = TrainingArguments(**training_kwargs)
-
-    def compute_metrics_fn(eval_pred):
-        preds = eval_pred.predictions
-        if isinstance(preds, (tuple, list)):
-            preds = preds[0]
-        preds = preds.argmax(axis=-1)
-        acc = (preds == eval_pred.label_ids).mean()
-        return {"accuracy": float(acc)}
-
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=val_dataset,
-        tokenizer=tokenizer,
-        compute_metrics=compute_metrics_fn
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
+    total_steps = len(train_loader) * args.epochs
+    scheduler = get_linear_schedule_with_warmup(
+        optimizer,
+        num_warmup_steps=int(total_steps * 0.1),
+        num_training_steps=total_steps
     )
+    scaler = torch.cuda.amp.GradScaler(enabled=(args.fp16 and use_cuda))
 
-    # ── Train ──
-    print("⏳ Starting model training...")
-    trainer.train()
+    # Inspect model forward signature for input filtering
+    sig = inspect.signature(model.forward)
+    model_param_names = set(sig.parameters.keys())
+
+    # ── Training Loop ──
+    best_val_loss = float("inf")
+    print(f"⏳ Training across {args.epochs} epochs ({len(train_loader)} batches/epoch)...")
+
+    for epoch in range(args.epochs):
+        model.train()
+        total_train_loss = 0.0
+
+        for batch_idx, batch in enumerate(train_loader, 1):
+            batch_inputs = {k: v.to(device) for k, v in batch.items() if k in model_param_names}
+            labels = batch["labels"].to(device)
+
+            optimizer.zero_grad()
+            with torch.cuda.amp.autocast(enabled=(args.fp16 and use_cuda)):
+                outputs = model(**batch_inputs, labels=labels)
+                loss = outputs.loss
+
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            scaler.step(optimizer)
+            scaler.update()
+            scheduler.step()
+
+            total_train_loss += loss.item()
+
+            if batch_idx % 40 == 0 or batch_idx == len(train_loader):
+                print(f"  [Epoch {epoch + 1}/{args.epochs}] Batch {batch_idx:3d}/{len(train_loader)} | Train Loss: {loss.item():.4f}")
+
+        avg_train_loss = total_train_loss / len(train_loader)
+
+        # ── Validation Loop ──
+        model.eval()
+        total_val_loss = 0.0
+        val_correct = 0
+        val_total = 0
+
+        with torch.no_grad():
+            for batch in val_loader:
+                batch_inputs = {k: v.to(device) for k, v in batch.items() if k in model_param_names}
+                labels = batch["labels"].to(device)
+
+                with torch.cuda.amp.autocast(enabled=(args.fp16 and use_cuda)):
+                    outputs = model(**batch_inputs, labels=labels)
+                    loss = outputs.loss
+                    logits = outputs.logits
+
+                total_val_loss += loss.item() * len(labels)
+                preds = logits.argmax(dim=-1)
+                val_correct += (preds == labels).sum().item()
+                val_total += len(labels)
+
+        avg_val_loss = total_val_loss / max(1, val_total)
+        val_acc = (val_correct / max(1, val_total)) * 100
+
+        print(f"✅ Epoch {epoch + 1}/{args.epochs} Complete | Avg Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Val Acc: {val_acc:.2f}%")
+
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            model.save_pretrained(model_ckpt_dir)
+            tokenizer.save_pretrained(model_ckpt_dir)
 
     # ── Test Evaluation & Counterfactual Inference ──
-    print("\n🔍 Running inference on Test Split (489 posts)...")
-    test_preds_raw = trainer.predict(test_dataset)
-    logits = test_preds_raw.predictions
-    if isinstance(logits, (tuple, list)):
-        logits = logits[0]
-    probs = torch.softmax(torch.tensor(logits), dim=-1).numpy()
-    pred_indices = probs.argmax(axis=-1)
+    print("\n🔍 Evaluating best model on Test Split (489 posts)...")
+    # Load best model weights if saved
+    if os.path.exists(os.path.join(model_ckpt_dir, "config.json")):
+        model = AutoModelForSequenceClassification.from_pretrained(model_ckpt_dir).to(device)
+
+    model.eval()
+    all_probs = []
+    with torch.no_grad():
+        for batch in test_loader:
+            batch_inputs = {k: v.to(device) for k, v in batch.items() if k in model_param_names}
+            with torch.cuda.amp.autocast(enabled=(args.fp16 and use_cuda)):
+                logits = model(**batch_inputs).logits
+            probs = torch.softmax(logits, dim=-1).cpu().numpy()
+            all_probs.extend(probs)
 
     annotated_test_records = []
-    for r, pred_idx, prob in zip(test_recs, pred_indices, probs):
+    for r, prob in zip(test_recs, all_probs):
+        pred_idx = prob.argmax()
         item = dict(r)
         item["pred_label"] = "misinfo" if pred_idx == 1 else "not_misinfo"
         item["prob_misinfo"] = float(prob[1])
@@ -232,11 +300,11 @@ def main():
         for r in annotated_test_records:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
-    # Compute counterfactual metrics
+    # Compute thesis counterfactual metrics
     metrics = compute_all_metrics(annotated_test_records)
     print(format_text_report(metrics, model_name=f"{args.model_name_or_path} ({args.task})"))
 
-    # Save summary json
+    # Save summary metrics json
     summary_file = os.path.join(args.results_dir, f"{run_name}_metrics.json")
     with open(summary_file, "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2, ensure_ascii=False)
