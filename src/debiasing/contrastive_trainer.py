@@ -55,8 +55,8 @@ def main():
         import torch.nn as nn
         from torch.utils.data import Dataset, DataLoader
         from transformers import AutoTokenizer, AutoModelForSequenceClassification, get_linear_schedule_with_warmup, set_seed
-    except ImportError:
-        print("❌ Error: Missing PyTorch or Transformers. Install via pip install torch transformers")
+    except ImportError as e:
+        print(f"❌ Error: Missing dependency: {e}. Install via: pip install torch transformers")
         sys.exit(1)
 
     set_seed(args.seed)

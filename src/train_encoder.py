@@ -121,8 +121,8 @@ def main():
             TrainingArguments,
             set_seed
         )
-    except ImportError:
-        print("❌ Error: Missing PyTorch or HuggingFace Transformers. Install via: pip install torch transformers datasets accelerate")
+    except ImportError as e:
+        print(f"❌ Error: Missing dependency: {e}. Install via: pip install torch transformers datasets accelerate")
         sys.exit(1)
 
     set_seed(args.seed)
