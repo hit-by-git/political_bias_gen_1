@@ -15,6 +15,7 @@ import os
 import sys
 import json
 import argparse
+import inspect
 from collections import defaultdict
 from typing import Dict, List, Any
 
@@ -94,6 +95,10 @@ def main():
     ce_loss_fn = nn.CrossEntropyLoss()
     mse_loss_fn = nn.MSELoss()
 
+    # Cache model forward parameter names to filter tokenizer outputs
+    sig = inspect.signature(model.forward)
+    model_param_names = set(sig.parameters.keys())
+
     model.train()
     for epoch in range(args.epochs):
         total_loss = 0.0
@@ -137,9 +142,7 @@ def main():
             targets = torch.tensor(labels, dtype=torch.long).to(device)
 
             # Filter model inputs to only include supported parameters
-            import inspect
-            sig = inspect.signature(model.forward)
-            model_inputs = {k: v for k, v in inputs.items() if k in sig.parameters}
+            model_inputs = {k: v for k, v in inputs.items() if k in model_param_names and k != "labels"}
 
             optimizer.zero_grad()
             outputs = model(**model_inputs, labels=targets)
@@ -187,9 +190,7 @@ def main():
                 return_tensors="pt"
             ).to(device)
 
-            import inspect
-            sig = inspect.signature(model.forward)
-            model_inputs = {k: v for k, v in inputs.items() if k in sig.parameters}
+            model_inputs = {k: v for k, v in inputs.items() if k in model_param_names and k != "labels"}
             logits = model(**model_inputs).logits
             preds = torch.argmax(logits, dim=-1).cpu().numpy()
 

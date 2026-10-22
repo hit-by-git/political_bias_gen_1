@@ -144,7 +144,7 @@ def main():
     print(f"\n{'=' * 65}")
     print(f"🚀 INITIATING ENCODER TRAINING (PyTorch Native)")
     print(f"• Model:      {args.model_name_or_path}")
-    print(f"• Device:     {device} ({torch.cuda.get_device_name(0) if use_cuda else 'CPU'})")
+    print(f"• Device:     {device} ({torch.cuda.get_device_name(0) if use_cuda else device.type.upper()})")
     print(f"• Task:       {args.task}")
     print(f"• Epochs:     {args.epochs} | Batch Size: {args.batch_size} | LR: {args.lr}")
     print(f"• Max Length: {args.max_seq_length} | FP16: {args.fp16 and use_cuda}")
@@ -202,7 +202,7 @@ def main():
             return float(current_step) / float(max(1, num_warmup_steps))
         return max(0.0, float(total_steps - current_step) / float(max(1, total_steps - num_warmup_steps)))
     scheduler = LambdaLR(optimizer, lr_lambda)
-    scaler = torch.cuda.amp.GradScaler(enabled=(args.fp16 and use_cuda))
+    scaler = torch.amp.GradScaler(device.type, enabled=(args.fp16 and use_cuda))
 
     # Inspect model forward signature for input filtering
     sig = inspect.signature(model.forward)
@@ -217,11 +217,11 @@ def main():
         total_train_loss = 0.0
 
         for batch_idx, batch in enumerate(train_loader, 1):
-            batch_inputs = {k: v.to(device) for k, v in batch.items() if k in model_param_names}
+            batch_inputs = {k: v.to(device) for k, v in batch.items() if k in model_param_names and k != "labels"}
             labels = batch["labels"].to(device)
 
             optimizer.zero_grad()
-            with torch.cuda.amp.autocast(enabled=(args.fp16 and use_cuda)):
+            with torch.amp.autocast(device.type, enabled=(args.fp16 and use_cuda)):
                 outputs = model(**batch_inputs, labels=labels)
                 loss = outputs.loss
 
@@ -247,10 +247,10 @@ def main():
 
         with torch.no_grad():
             for batch in val_loader:
-                batch_inputs = {k: v.to(device) for k, v in batch.items() if k in model_param_names}
+                batch_inputs = {k: v.to(device) for k, v in batch.items() if k in model_param_names and k != "labels"}
                 labels = batch["labels"].to(device)
 
-                with torch.cuda.amp.autocast(enabled=(args.fp16 and use_cuda)):
+                with torch.amp.autocast(device.type, enabled=(args.fp16 and use_cuda)):
                     outputs = model(**batch_inputs, labels=labels)
                     loss = outputs.loss
                     logits = outputs.logits
@@ -280,8 +280,8 @@ def main():
     all_probs = []
     with torch.no_grad():
         for batch in test_loader:
-            batch_inputs = {k: v.to(device) for k, v in batch.items() if k in model_param_names}
-            with torch.cuda.amp.autocast(enabled=(args.fp16 and use_cuda)):
+            batch_inputs = {k: v.to(device) for k, v in batch.items() if k in model_param_names and k != "labels"}
+            with torch.amp.autocast(device.type, enabled=(args.fp16 and use_cuda)):
                 logits = model(**batch_inputs).logits
             probs = torch.softmax(logits, dim=-1).cpu().numpy()
             all_probs.extend(probs)
