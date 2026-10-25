@@ -43,7 +43,9 @@ LANGUAGE_GUIDELINES = {
 }
 
 
-PROMPT_B_NEUTRAL = """Article: {article}
+# ─── 2x2 FACTORIAL CONTRASTIVE QUADRUPLET PROMPTS (HASOC DISENTANGLEMENT) ────
+# Variant 1: Veracity = TRUE, Affect = NEUTRAL (HASOC: NOT)
+PROMPT_B_NEUTRAL_FACTUAL = """Article: {article}
 
 Target Fact to Preserve: "{orig}"
 Language Style: {language}
@@ -51,45 +53,72 @@ Guidelines:
 {style_guideline}
 
 Think briefly inside "analysis": list the numbers, names, and day from the article that must be kept.
-Then write a calm, accurate {platform} post of 1-2 sentences summarizing the article.
-CRITICAL REQUIREMENT: The post MUST explicitly mention or include the fact "{orig}". Keep every number, name, and day accurate to the article.
+Then write a calm, accurate, non-hateful {platform} post of 1-2 sentences summarizing the article.
+CRITICAL REQUIREMENTS:
+1. The post MUST explicitly mention or include the fact "{orig}". Keep every number, name, and day accurate to the article.
+2. Maintain a completely calm, objective, neutral tone. Do NOT use angry words, insults, or slang.
 
 Return JSON: {{"analysis": "...", "post": "..."}}"""
 
-
-PROMPT_C_HARD_NEGATIVE = """Article: {article}
+# Variant 2: Veracity = TRUE, Affect = TOXIC/HOSTILE (HASOC: HOF)
+PROMPT_C_TOXIC_FACTUAL = """Article: {article}
 
 Target Fact to Preserve: "{orig}"
-Required Slang Word: "{slang}"
+Required Slang/Hostile Marker: "{slang}"
 Language Style: {language}
 Guidelines:
 {style_guideline}
 
-Think inside "analysis": (1) confirm that fact "{orig}" is preserved, (2) describe the sarcastic emotion or grievance.
-Then write an angry, sarcastic {platform} post of 1-2 sentences reacting to the article.
+Think inside "analysis": (1) confirm that fact "{orig}" is preserved, (2) describe the hostile rhetorical grievance.
+Then write a hostile, angry, sarcastic {platform} post of 1-2 sentences reacting to the article (incorporating aggressive vernacular rhetoric).
 CRITICAL REQUIREMENTS:
 1. The post MUST explicitly mention the fact "{orig}".
-2. Express anger through opinion, skepticism, and tone ONLY. Do NOT distort any facts or numbers.
+2. Express extreme anger, cynicism, or outrage through tone and opinion ONLY. Do NOT distort any facts or numbers.
 3. Use the word "{slang}" naturally.
 
 Return JSON: {{"analysis": "...", "post": "..."}}"""
 
-
-PROMPT_D_MISINFO = """Article: {article}
+# Variant 3: Veracity = FALSE, Affect = NEUTRAL (HASOC: NOT)
+PROMPT_D_NEUTRAL_MISINFO = """Article: {article}
 
 Original Fact: "{orig}"
 Distorted / Fake Claim: "{fake}"
-Required Slang Word: "{slang}"
 Language Style: {language}
 Guidelines:
 {style_guideline}
 
 {mutator_instruction}
 
-Think inside "analysis": (1) original fact is "{orig}", (2) distorted claim is "{fake}", (3) all other facts remain unchanged.
-Then write an angry, viral {platform} post of 1-2 sentences promoting the distorted claim.
+Think inside "analysis": (1) original fact is "{orig}", (2) distorted claim is "{fake}", (3) keep tone polite and calm.
+Then write a calm, polite, informative-sounding {platform} post of 1-2 sentences presenting the distorted claim as plain matter-of-fact news.
 CRITICAL REQUIREMENTS:
 1. The post MUST contain "{fake}" and MUST NOT contain "{orig}".
-2. Use the word "{slang}" naturally.
+2. Maintain a calm, neutral, standard tone. Do NOT use any angry slang, abusive terms, or hostility.
 
 Return JSON: {{"analysis": "...", "post": "..."}}"""
+
+# Variant 4: Veracity = FALSE, Affect = TOXIC/HOSTILE (HASOC: HOF)
+PROMPT_E_TOXIC_MISINFO = """Article: {article}
+
+Original Fact: "{orig}"
+Distorted / Fake Claim: "{fake}"
+Required Slang/Hostile Marker: "{slang}"
+Language Style: {language}
+Guidelines:
+{style_guideline}
+
+{mutator_instruction}
+
+Think inside "analysis": (1) original fact is "{orig}", (2) distorted claim is "{fake}", (3) express viral aggressive outrage.
+Then write an aggressive, outraged, viral {platform} post of 1-2 sentences weaponizing the distorted claim.
+CRITICAL REQUIREMENTS:
+1. The post MUST contain "{fake}" and MUST NOT contain "{orig}".
+2. Use the hostile slang "{slang}" naturally with sharp sarcasm or grievance.
+
+Return JSON: {{"analysis": "...", "post": "..."}}"""
+
+# ─── BACKWARD COMPATIBILITY ALIASES ──────────────────────────────────────────
+PROMPT_B_NEUTRAL = PROMPT_B_NEUTRAL_FACTUAL
+PROMPT_C_HARD_NEGATIVE = PROMPT_C_TOXIC_FACTUAL
+PROMPT_D_MISINFO = PROMPT_E_TOXIC_MISINFO
+

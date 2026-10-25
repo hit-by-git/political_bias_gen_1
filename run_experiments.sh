@@ -22,6 +22,15 @@ echo "=========================================================="
 mkdir -p experiments/checkpoints experiments/results
 
 case $TASK in
+  "synthesis_quadruplets")
+    echo "🚀 Running 2x2 Factorial Quadruplet Synthesis (vLLM)..."
+    python3 src/synthesis/pipeline.py \
+      --format quadruplet \
+      --model ${SYNTHESIS_MODEL:-"meta-llama/Meta-Llama-3.1-8B-Instruct"} \
+      --tp 1 \
+      --resume
+    ;;
+
   "split")
     echo "📊 Splitting dataset into event-level train/val/test..."
     python3 src/evaluation/split_dataset.py
@@ -94,7 +103,7 @@ case $TASK in
     ;;
 
   *)
-    echo "Usage: bash run_experiments.sh [split|task_a_muril|task_b_muril|task_b_indicbert|task_b_xlmr|llm_cot|debias_cda|all_encoders]"
+    echo "Usage: bash run_experiments.sh [synthesis_quadruplets|split|task_a_muril|task_b_muril|task_b_indicbert|task_b_xlmr|llm_cot|debias_cda|all_encoders]"
     exit 1
     ;;
 esac

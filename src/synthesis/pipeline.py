@@ -23,6 +23,10 @@ try:
         PROMPT_B_NEUTRAL,
         PROMPT_C_HARD_NEGATIVE,
         PROMPT_D_MISINFO,
+        PROMPT_B_NEUTRAL_FACTUAL,
+        PROMPT_C_TOXIC_FACTUAL,
+        PROMPT_D_NEUTRAL_MISINFO,
+        PROMPT_E_TOXIC_MISINFO,
         LANGUAGE_GUIDELINES,
     )
     from mutators import extract_facts, mutate_fact
@@ -34,6 +38,10 @@ except ImportError:
         PROMPT_B_NEUTRAL,
         PROMPT_C_HARD_NEGATIVE,
         PROMPT_D_MISINFO,
+        PROMPT_B_NEUTRAL_FACTUAL,
+        PROMPT_C_TOXIC_FACTUAL,
+        PROMPT_D_NEUTRAL_MISINFO,
+        PROMPT_E_TOXIC_MISINFO,
         LANGUAGE_GUIDELINES,
     )
     from src.synthesis.mutators import extract_facts, mutate_fact
@@ -49,8 +57,8 @@ try:
 except ImportError:
     HAS_VLLM = False
 
-MODEL_NAME = "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int8"
-TENSOR_PARALLEL = 2  # 1 for single GPU, 2 for 2x T4 on Kaggle / Colab
+MODEL_NAME = os.environ.get("SYNTHESIS_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct")
+TENSOR_PARALLEL = 1  # 1 for modern single GPU (e.g. H200 141GB, RTX 6000 96GB)
 
 llm = None
 
@@ -93,37 +101,51 @@ def generate_llm(prompt: str, temperature: float = 0.7, max_retries: int = 3, is
         
         orig_match = _re.search(r'(?:Target Fact to Preserve|Original Fact):\s*\"([^\"]+)\"', prompt)
         fake_match = _re.search(r'Distorted / Fake Claim:\s*\"([^\"]+)\"', prompt)
-        slang_match = _re.search(r'Required Slang Word:\s*\"([^\"]+)\"', prompt)
+        slang_match = _re.search(r'(?:Required Slang Word|Required Slang/Hostile Marker):\s*\"([^\"]+)\"', prompt)
         orig_val = orig_match.group(1) if orig_match else "₹2.5 crore"
         fake_val = fake_match.group(1) if fake_match else "₹15 crore"
         slang_val = slang_match.group(1) if slang_match else "tamasha"
 
-        if "Target Fact to Preserve" in prompt and "angry" not in prompt:
+        # ── 1. Factual Neutral (True / Non-hateful) ──
+        if "Target Fact to Preserve" in prompt and "hostile" not in prompt.lower() and "angry" not in prompt.lower():
             return {
                 "analysis": f"Preserve: {orig_val}.",
                 "post": f"Mayor Verma confirmed {orig_val} approved on Monday for City Road repairs."
             }
+        # ── 2. Factual Toxic/Hostile (True / Hateful rhetoric) ──
         elif "Target Fact to Preserve" in prompt:
             return {
                 "analysis": f"Preserve: {orig_val}, slang: {slang_val}.",
                 "post": f"Mayor Verma confirmed {orig_val} on Monday, but when will work end? Total {slang_val}."
             }
+        # ── 3. Misinfo Neutral (False / Polite & calm) ──
+        elif "calm" in prompt.lower() or "polite" in prompt.lower() or "not use any angry slang" in prompt.lower():
+            return {
+                "analysis": f"Fake: {fake_val}, calm news tone.",
+                "post": f"According to local reports, officials have allocated {fake_val} on Monday for City Road."
+            }
+        # ── 4. Misinfo Toxic/Hostile (False / Hateful rhetoric) ──
         else:
             return {
                 "analysis": f"Fake: {fake_val}, slang: {slang_val}.",
                 "post": f"{fake_val} for road repair?? Mayor Verma passed it Monday. Total {slang_val}, where is the money going?"
             }
 
-    full_prompt = (
-        f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n"
-        f"<|im_start|>user\n{prompt}<|im_end|>\n"
-        f"<|im_start|>assistant\n"
-    )
+    try:
+        tokenizer = llm.get_tokenizer()
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
+        full_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    except Exception:
+        full_prompt = (
+            f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n"
+            f"<|im_start|>user\n{prompt}<|im_end|>\n"
+            f"<|im_start|>assistant\n"
+        )
 
     sampling_params = SamplingParams(
         temperature=temperature,
         max_tokens=512,
-        stop=["<|im_end|>", "<|endoftext|>"],
+        stop=["<|im_end|>", "<|endoftext|>", "<|eot_id|>", "</s>"],
     )
 
     for attempt in range(max_retries):
@@ -190,6 +212,9 @@ def main():
 
     parser.add_argument('--data', type=str, default=default_data, help="Path to input GDELT CSV")
     parser.add_argument('--model', type=str, default=MODEL_NAME, help="Model name or HF path")
+    parser.add_argument('--format', type=str, default='quadruplet', choices=['quadruplet', 'triplet'],
+                        help="Synthesis format: 'quadruplet' (2x2 factorial HASOC disentanglement) or 'triplet' (legacy)")
+    parser.add_argument('--output', type=str, default=None, help="Custom output JSONL file path (default by format)")
     parser.add_argument('--quantization', type=str, default=None, help="Quantization method (awq, gptq, fp8, or None for FP16)")
     parser.add_argument('--max-model-len', type=int, default=4096, help="Maximum sequence context length for vLLM")
     parser.add_argument('--live', action='store_true', help="Pull fresh real-time GDELT articles before running")
@@ -270,9 +295,11 @@ def main():
     ]
 
     # ── Output paths ──
-    out_file = 'output/synthetic_dataset.jsonl'
+    default_out = 'output/synthetic_quadruplets.jsonl' if args.format == 'quadruplet' else 'output/synthetic_dataset.jsonl'
+    out_file = args.output or default_out
     rej_file = 'output/rejections.jsonl'
     os.makedirs('output', exist_ok=True)
+    print(f"📁 Output destination: {out_file} (Format: {args.format})")
 
     # ── Resume support ──
     processed_events = set()
@@ -287,7 +314,7 @@ def main():
         print(f"⏩ Resuming — {len(processed_events)} events already completed")
 
     stats = {
-        "complete_triplets": 0,
+        "complete_units": 0,
         "accepted_posts": 0,
         "rejected_events": 0,
         "skipped_no_article": 0,
@@ -351,26 +378,52 @@ def main():
         style_guideline = LANGUAGE_GUIDELINES.get(language, "")
         article_numbers = extract_numbers(article)
 
-        variants = [
-            ("neutral", PROMPT_B_NEUTRAL.format(
-                article=article, orig=mutation['orig'], platform=platform,
-                language=language, style_guideline=style_guideline
-            ), 0.7),
-            ("hard_negative", PROMPT_C_HARD_NEGATIVE.format(
-                article=article, orig=mutation['orig'], platform=platform,
-                language=language, slang=slang, style_guideline=style_guideline
-            ), 0.85),
-            ("misinfo", PROMPT_D_MISINFO.format(
-                article=article, orig=mutation['orig'], fake=mutation['fake'],
-                platform=platform, language=language, slang=slang,
-                mutator_instruction=mutation['mutator_instruction'],
-                style_guideline=style_guideline
-            ), 0.85),
-        ]
+        if args.format == "quadruplet":
+            variants = [
+                ("neutral_factual", PROMPT_B_NEUTRAL_FACTUAL.format(
+                    article=article, orig=mutation['orig'], platform=platform,
+                    language=language, style_guideline=style_guideline
+                ), 0.6),
+                ("toxic_factual", PROMPT_C_TOXIC_FACTUAL.format(
+                    article=article, orig=mutation['orig'], platform=platform,
+                    language=language, slang=slang, style_guideline=style_guideline
+                ), 0.8),
+                ("neutral_misinfo", PROMPT_D_NEUTRAL_MISINFO.format(
+                    article=article, orig=mutation['orig'], fake=mutation['fake'],
+                    platform=platform, language=language,
+                    mutator_instruction=mutation['mutator_instruction'],
+                    style_guideline=style_guideline
+                ), 0.6),
+                ("toxic_misinfo", PROMPT_E_TOXIC_MISINFO.format(
+                    article=article, orig=mutation['orig'], fake=mutation['fake'],
+                    platform=platform, language=language, slang=slang,
+                    mutator_instruction=mutation['mutator_instruction'],
+                    style_guideline=style_guideline
+                ), 0.85),
+            ]
+            expected_count = 4
+        else:
+            variants = [
+                ("neutral", PROMPT_B_NEUTRAL.format(
+                    article=article, orig=mutation['orig'], platform=platform,
+                    language=language, style_guideline=style_guideline
+                ), 0.7),
+                ("hard_negative", PROMPT_C_HARD_NEGATIVE.format(
+                    article=article, orig=mutation['orig'], platform=platform,
+                    language=language, slang=slang, style_guideline=style_guideline
+                ), 0.85),
+                ("misinfo", PROMPT_D_MISINFO.format(
+                    article=article, orig=mutation['orig'], fake=mutation['fake'],
+                    platform=platform, language=language, slang=slang,
+                    mutator_instruction=mutation['mutator_instruction'],
+                    style_guideline=style_guideline
+                ), 0.85),
+            ]
+            expected_count = 3
 
-        # ── Stage 2: Symmetrical Triplet Generation & Atomic Validation ──
-        triplet_records = []
-        triplet_valid = True
+        # ── Stage 2: Symmetrical Multi-Variant Generation & Atomic Validation ──
+        unit_records = []
+        unit_valid = True
         failed_reason = ""
 
         for variant_name, prompt, temp in variants:
@@ -397,20 +450,26 @@ def main():
                     fake_hi=mutation.get('fake_hi', '')
                 )
 
+                is_misinfo = "misinfo" in variant_name
+                is_toxic = "toxic" in variant_name or variant_name in ["hard_negative", "misinfo"]
+
                 record = {
                     "id": f"{event_id}_{variant_name}",
                     "event_id": int(event_id) if not pd.isna(event_id) else 0,
                     "split": "train",
                     "article": article,
                     "post": post,
-                    "label": "misinfo" if variant_name == "misinfo" else "not_misinfo",
+                    "label": "misinfo" if is_misinfo else "not_misinfo",
+                    "veracity": "false" if is_misinfo else "true",
+                    "affect": "toxic" if is_toxic else "neutral",
+                    "hasoc_class": "HOF" if is_toxic else "NOT",
                     "variant": variant_name,
-                    "tactic": mutation['tactic'] if variant_name == "misinfo" else "none",
-                    "false_claim": mutation['fake'] if variant_name == "misinfo" else "",
-                    "contradicting_fact": mutation['orig'] if variant_name == "misinfo" else "",
+                    "tactic": mutation['tactic'] if is_misinfo else "none",
+                    "false_claim": mutation['fake'] if is_misinfo else "",
+                    "contradicting_fact": mutation['orig'] if is_misinfo else "",
                     "platform": platform,
                     "language": language,
-                    "slang": slang,
+                    "slang": slang if is_toxic else "",
                     "tone": float(row.get('AvgTone', 0)) if not pd.isna(row.get('AvgTone', 0)) else 0.0,
                     "gdelt_tone": float(row.get('AvgTone', 0)) if not pd.isna(row.get('AvgTone', 0)) else 0.0,
                     "theme": str(row.get('EventRootCode', '')),
@@ -425,18 +484,18 @@ def main():
                     failed_reason = f"{variant_name}: {reason}"
 
             if variant_passed and best_variant_record:
-                triplet_records.append(best_variant_record)
+                unit_records.append(best_variant_record)
             else:
-                triplet_valid = False
+                unit_valid = False
                 break
 
-        # ── Atomic Triplet Persistence ──
-        if triplet_valid and len(triplet_records) == 3:
+        # ── Atomic Persistence: All variants must pass or event is discarded ──
+        if unit_valid and len(unit_records) == expected_count:
             with open(out_file, 'a') as f:
-                for rec in triplet_records:
+                for rec in unit_records:
                     f.write(json.dumps(rec, ensure_ascii=False) + '\n')
-            stats["complete_triplets"] += 1
-            stats["accepted_posts"] += 3
+            stats["complete_units"] += 1
+            stats["accepted_posts"] += expected_count
             processed_events.add(event_id)
         else:
             stats["rejected_events"] += 1
@@ -445,7 +504,8 @@ def main():
                     "event_id": int(event_id) if not pd.isna(event_id) else 0,
                     "reason": failed_reason,
                     "language": language,
-                    "collected_variants": len(triplet_records)
+                    "collected_variants": len(unit_records),
+                    "expected": expected_count,
                 }
                 f.write(json.dumps(rej_log, ensure_ascii=False) + '\n')
 
@@ -459,9 +519,8 @@ def main():
     # ── Final Report ──
     print("\n" + "=" * 60)
     print("PIPELINE COMPLETE (BALANCED CONTRASTIVE BENCHMARK)")
-    print("=" * 60)
-    print(f"  Complete Triplets: {stats['complete_triplets']}")
-    print(f"  Accepted Posts:    {stats['accepted_posts']} (1:1:1 Balanced)")
+    print(f"  Complete Units ({args.format}): {stats['complete_units']}")
+    print(f"  Accepted Posts:    {stats['accepted_posts']} (Balanced)")
     print(f"  Rejected Events:   {stats['rejected_events']}")
     print(f"  Output Dataset:    {out_file}")
     print(f"  Rejections Log:    {rej_file}")

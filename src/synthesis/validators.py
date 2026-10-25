@@ -117,21 +117,21 @@ def validate_post(
 
     post_lower = normalize_script(post.lower())
 
-    # 3. Slang presence verification (for hard_negative and misinfo)
-    if variant in ["hard_negative", "misinfo"]:
+    # 3. Slang presence verification (for toxic/hostile variants)
+    if variant in ["hard_negative", "misinfo", "toxic_factual", "toxic_misinfo"]:
         slang_lower = slang.lower()
         slang_variants = SLANG_MAP.get(slang_lower, [slang_lower])
         if not any(s in post_lower for s in slang_variants):
             return False, f"Missing required slang: {slang}"
 
     # 4. Variant-specific fact consistency constraints
-    if variant in ["neutral", "hard_negative"]:
+    if variant in ["neutral", "hard_negative", "neutral_factual", "toxic_factual"]:
         if not match_fact_in_text(orig, post, orig_hi):
             return False, f"Missing original fact: {orig}"
         if fake and match_fact_in_text(fake, post, fake_hi):
             return False, f"Contains fake fact in {variant} post: {fake}"
 
-    elif variant == "misinfo":
+    elif variant in ["misinfo", "neutral_misinfo", "toxic_misinfo"]:
         if not match_fact_in_text(fake, post, fake_hi):
             return False, f"Missing fake fact: {fake}"
         if orig and match_fact_in_text(orig, post, orig_hi):
@@ -140,7 +140,7 @@ def validate_post(
     # 5. Hallucinated number constraint
     post_numbers = extract_numbers(post)
     allowed_numbers = article_numbers.copy()
-    if variant == "misinfo" and fake:
+    if variant in ["misinfo", "neutral_misinfo", "toxic_misinfo"] and fake:
         allowed_numbers.update(extract_numbers(fake))
     if orig:
         allowed_numbers.update(extract_numbers(orig))
