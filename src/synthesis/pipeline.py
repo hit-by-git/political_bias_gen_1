@@ -1,31 +1,46 @@
+import sys
 import os
+
+# Ensure synthesis directory and project root are in sys.path
+_cwd = os.path.abspath(os.path.dirname(__file__))
+_root = os.path.abspath(os.path.join(_cwd, "../.."))
+for p in [_cwd, _root]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
+os.environ["PYTHONPATH"] = f"{_cwd}:{_root}:{os.environ.get('PYTHONPATH', '')}"
+
 import json
 import random
 import pandas as pd
 import argparse
 import re as _re
 from tqdm import tqdm
-from prompts import (
-    SYSTEM_PROMPT,
-    PROMPT_A_ARTICLE,
-    PROMPT_B_NEUTRAL,
-    PROMPT_C_HARD_NEGATIVE,
-    PROMPT_D_MISINFO,
-    LANGUAGE_GUIDELINES,
-)
-from mutators import extract_facts, mutate_fact
-from validators import validate_post, validate_article, extract_numbers
+
+try:
+    from prompts import (
+        SYSTEM_PROMPT,
+        PROMPT_A_ARTICLE,
+        PROMPT_B_NEUTRAL,
+        PROMPT_C_HARD_NEGATIVE,
+        PROMPT_D_MISINFO,
+        LANGUAGE_GUIDELINES,
+    )
+    from mutators import extract_facts, mutate_fact
+    from validators import validate_post, validate_article, extract_numbers
+except ImportError:
+    from src.synthesis.prompts import (
+        SYSTEM_PROMPT,
+        PROMPT_A_ARTICLE,
+        PROMPT_B_NEUTRAL,
+        PROMPT_C_HARD_NEGATIVE,
+        PROMPT_D_MISINFO,
+        LANGUAGE_GUIDELINES,
+    )
+    from src.synthesis.mutators import extract_facts, mutate_fact
+    from src.synthesis.validators import validate_post, validate_article, extract_numbers
 
 # Bypass broken torchaudio CUDA mismatch on Kaggle (text LLMs do not use audio)
-import sys
-import os
 sys.modules['torchaudio'] = None
-
-# Ensure current working directory is first in sys.path and PYTHONPATH so all subprocesses inherit sitecustomize.py
-_cwd = os.path.abspath(os.path.dirname(__file__))
-if _cwd not in sys.path:
-    sys.path.insert(0, _cwd)
-os.environ["PYTHONPATH"] = f"{_cwd}:{os.environ.get('PYTHONPATH', '')}"
 
 # Try importing vllm; allow mock mode for testing without GPU
 try:
@@ -167,7 +182,13 @@ def main():
     parser.add_argument('--no-drive', action='store_true', help="Disable Google Drive auto-save")
     parser.add_argument('--tp', type=int, default=TENSOR_PARALLEL, help="Tensor parallel size (1 or 2)")
     parser.add_argument('--mock', action='store_true', help="Use mock generator for local testing without GPU")
-    parser.add_argument('--data', type=str, default='data/gdelt_india_political_700.csv', help="Path to input GDELT CSV")
+    default_data = 'data/processed/gdelt_india_political_1500_enriched.csv'
+    if not os.path.exists(default_data):
+        alt_data = os.path.join(_root, 'data/processed/gdelt_india_political_1500_enriched.csv')
+        if os.path.exists(alt_data):
+            default_data = alt_data
+
+    parser.add_argument('--data', type=str, default=default_data, help="Path to input GDELT CSV")
     parser.add_argument('--model', type=str, default=MODEL_NAME, help="Model name or HF path")
     parser.add_argument('--quantization', type=str, default=None, help="Quantization method (awq, gptq, fp8, or None for FP16)")
     parser.add_argument('--max-model-len', type=int, default=4096, help="Maximum sequence context length for vLLM")
@@ -180,7 +201,7 @@ def main():
     if args.live:
         print("🌐 --live flag active: Pulling fresh real-time articles from GDELT...")
         from pull_gdelt import pull_and_save_gdelt
-        live_csv = 'data/gdelt_live_pulled.csv'
+        live_csv = 'data/processed/gdelt_live_pulled.csv'
         pulled = pull_and_save_gdelt(output_csv=live_csv, count=args.limit or 50)
         if pulled and os.path.exists(pulled):
             args.data = live_csv
@@ -225,8 +246,13 @@ def main():
             # blacklist.update(str(n).strip() for n in names if str(n).strip())
             continue
 
-    blacklist_path = 'real_names.txt'
-    if os.path.exists(blacklist_path):
+    blacklist_candidates = [
+        'data/processed/real_names.txt',
+        os.path.join(_root, 'data/processed/real_names.txt'),
+        'real_names.txt',
+    ]
+    blacklist_path = next((p for p in blacklist_candidates if os.path.exists(p)), None)
+    if blacklist_path and os.path.exists(blacklist_path):
         with open(blacklist_path) as f:
             for line in f:
                 name = line.strip()

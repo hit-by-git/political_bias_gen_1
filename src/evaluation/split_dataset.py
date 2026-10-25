@@ -168,7 +168,7 @@ def main():
     parser.add_argument(
         "--input",
         type=str,
-        default="output/output/synthetic_dataset.jsonl",
+        default="output/synthetic_dataset.jsonl",
         help="Path to synthetic_dataset.jsonl"
     )
     parser.add_argument(
@@ -183,14 +183,8 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    # Fallback if default not found
     if not os.path.exists(args.input):
-        fallback = "output/synthetic_dataset.jsonl"
-        if os.path.exists(fallback):
-            print(f"Input {args.input} not found, falling back to {fallback}")
-            args.input = fallback
-        else:
-            raise FileNotFoundError(f"Neither {args.input} nor {fallback} exists!")
+        raise FileNotFoundError(f"Synthetic dataset file not found at {args.input}!")
 
     events = load_dataset_by_events(args.input)
     train_ids, val_ids, test_ids = stratified_event_split(

@@ -24,21 +24,71 @@ Because every accepted event produces all three variants ($N_{neutral} = N_{hard
 ## 🔒 Safety & Ethical Safeguards
 - **100% Synthetic Grounding:** All named actors are strictly fictional (e.g., *Mayor Verma*, *Candidate Rajesh*, *Party Vikas*).
 - **Pre-Sanitization:** Real party names (BJP, Congress, TMC, etc.) and political figures are scrubbed from raw GDELT headlines before prompt injection.
-- **Dual-Stage Blacklist Validation:** Articles and posts are checked against an expanded Indian political gazetteer (`real_names.txt`). Any instance of real entity leakage triggers immediate rejection.
+- **Dual-Stage Blacklist Validation:** Articles and posts are checked against an expanded Indian political gazetteer (`data/processed/real_names.txt`). Any instance of real entity leakage triggers immediate rejection.
 
 ---
 
-## 🛠️ Pipeline Architecture
-1. **Headline Pre-Sanitization:** Scrubs real political entities from GDELT headlines.
-2. **Stage 1 (Article Expansion):** Generates a 3-sentence factual anchor containing a rupee amount, crowd count, and weekday.
-3. **Multilingual Fact Extraction & Mutation:** Extracts atomic facts with bilingual regexes and applies non-linear perturbations (e.g. non-round multipliers, outcome polarity inversion).
-4. **Stage 2 (Symmetrical CoT Generation):** Generates `neutral`, `hard_negative`, and `misinfo` posts using explicit in-context few-shot code-mixing and Hindi guidelines.
-5. **Script-Aware Dual-Stage Validation:** Normalizes Devanagari numerals and validates fact retention, slang presence, and number integrity.
-6. **Atomic Persistence:** Only writes to `synthetic_dataset.jsonl` if **all three variants** pass validation.
+## 📁 Repository Structure
+
+```text
+political_bias_gen_1/
+├── docs/                                     # Master Thesis & Research Deliverables
+│   ├── RESEARCH_REPORT.md                    # Comprehensive Research Project Report
+│   └── thesis_report.tex                     # Master LaTeX Thesis Document
+│
+├── data/                                     # Data Pathways
+│   ├── raw/                                  # Raw external event data (GDELT 1,500 scrape)
+│   │   └── gdelt_india_political_1500.csv
+│   ├── processed/                            # Enriched headlines & entity gazetteer
+│   │   ├── gdelt_india_political_1500_enriched.csv
+│   │   └── real_names.txt
+│   └── splits/                               # Event-stratified splits (train/val/test)
+│       ├── train.jsonl                       # 2,304 posts (768 events)
+│       ├── val.jsonl                         # 495 posts (165 events)
+│       ├── test.jsonl                        # 489 posts (163 events)
+│       └── split_summary.json
+│
+├── output/                                   # Synthetic Triplet Dataset Outputs
+│   ├── synthetic_dataset.jsonl               # 3,288 verified contrastive triplets
+│   ├── rejections.jsonl                      # 402 rejected events log
+│   └── synthetic_thesis_dataset.zip          # Distribution zip archive
+│
+├── src/                                      # Modular Code Pathways
+│   ├── synthesis/                            # 🚀 IMPLEMENTATION 1: Data Generation Engine
+│   │   ├── pipeline.py                       # vLLM high-throughput generation driver
+│   │   ├── pull_gdelt.py                     # GDELT 2.0 event harvester
+│   │   ├── enrich_headlines.py               # Slug & OpenGraph metadata enrichment
+│   │   ├── prompts.py                        # Multilingual CoT few-shot prompt templates
+│   │   ├── mutators.py                       # 5 factual perturbation operators
+│   │   ├── validators.py                     # Script-aware, slang & entity validators
+│   │   └── sitecustomize.py                  # Colab/Kaggle CUDA isolation patch
+│   │
+│   └── evaluation/                           # 🏋️ IMPLEMENTATION 2: Benchmarking & Debiasing Engine
+│       ├── split_dataset.py                  # Stratified event-level dataset partitioner
+│       ├── train_encoder.py                  # Task A (Post-Only) & Task B (Evidence) trainer
+│       ├── eval_llm.py                       # LLM Zero-Shot & CoT evaluation
+│       ├── evaluate_metrics.py               # Diagnostic metrics (ΔABG, TCR, ΔCL, Macro-F1)
+│       └── debiasing/
+│           └── contrastive_trainer.py        # CDA symmetrical contrastive regularization
+│
+└── experiments/                              # Empirical Benchmarks & Deliverables
+    ├── run_experiments.sh                    # Master runner script for all experiments
+    ├── checkpoints/                          # Model checkpoints (.gitkeep)
+    └── results/                              # 9 Empirical evaluation deliverables
+        ├── debiased_muril_metrics.json
+        ├── debiased_muril_table.tex
+        ├── debiased_muril_test_preds.jsonl
+        ├── google_muril-base-cased_evidence_conditioned_metrics.json
+        ├── google_muril-base-cased_evidence_conditioned_table.tex
+        ├── google_muril-base-cased_evidence_conditioned_test_preds.jsonl
+        ├── google_muril-base-cased_post_only_metrics.json
+        ├── google_muril-base-cased_post_only_table.tex
+        └── google_muril-base-cased_post_only_test_preds.jsonl
+```
 
 ---
 
-## 🚀 Usage
+## 🚀 Execution & Usage
 
 ### 1. Requirements
 ```bash
@@ -47,21 +97,40 @@ pip install -r requirements.txt
 pip install vllm
 ```
 
-### 2. Local Testing / Dry-Run (CPU / Mac)
-To verify the pipeline logic without a GPU:
+### 2. Implementation 1: Data Synthesis Pipeline
 ```bash
-python pipeline.py --limit 10 --mock
+# Dry run / mock testing (CPU / Mac):
+python src/synthesis/pipeline.py --limit 10 --mock
+
+# Production generation (GPU / vLLM):
+python src/synthesis/pipeline.py --tp 2 --resume
+
+# Optional: Harvest fresh GDELT articles & enrich headlines:
+python src/synthesis/pull_gdelt.py --count 100
+python src/synthesis/enrich_headlines.py
 ```
 
-### 3. Production Run (GPU / vLLM)
-On Google Colab or Kaggle (2x T4 GPUs):
+### 3. Implementation 2: Downstream Benchmarking & Debiasing
 ```bash
-python pipeline.py --tp 2 --resume
+# Partition synthetic dataset into event-stratified train/val/test splits:
+bash run_experiments.sh split
+
+# Train MuRIL on Task A (Post-Only bias probing):
+bash run_experiments.sh task_a_muril
+
+# Train MuRIL on Task B (Evidence-Conditioned verification):
+bash run_experiments.sh task_b_muril
+
+# Run Symmetrical Contrastive Debiasing (CDA):
+bash run_experiments.sh debias_cda
+
+# Run all encoder baselines (MuRIL, IndicBERT, XLM-R, CDA):
+bash run_experiments.sh all_encoders
 ```
 
 ---
 
-## 📊 Dataset Schema (`synthetic_dataset.jsonl`)
+## 📊 Dataset Schema (`output/synthetic_dataset.jsonl`)
 Each line is a JSON object with:
 - `id`: Unique identifier (`<event_id>_<variant>`)
 - `event_id`: GDELT root event ID

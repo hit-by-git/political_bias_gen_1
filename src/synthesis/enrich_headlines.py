@@ -121,7 +121,14 @@ def generate_fallback_headline(row: pd.Series) -> str:
         return f"Political Leaders {action} {geo_short}"
 
 
-def enrich_dataset(input_csv: str = "data/gdelt_india_political_1500.csv", output_csv: str = None):
+def enrich_dataset(input_csv: str = "data/raw/gdelt_india_political_1500.csv", output_csv: str = "data/processed/gdelt_india_political_1500_enriched.csv"):
+    if not os.path.exists(input_csv):
+        # Fallback if run from inside src/synthesis
+        alt = os.path.join(os.path.dirname(__file__), "../../data/raw/gdelt_india_political_1500.csv")
+        if os.path.exists(alt):
+            input_csv = alt
+            output_csv = os.path.join(os.path.dirname(__file__), "../../data/processed/gdelt_india_political_1500_enriched.csv")
+
     print(f"📖 Reading dataset from {input_csv}...")
     df = pd.read_csv(input_csv)
     print(f"📊 Loaded {len(df)} rows.")
@@ -184,8 +191,8 @@ def enrich_dataset(input_csv: str = "data/gdelt_india_political_1500.csv", outpu
     print(f"💾 Successfully saved enriched dataset to: {output_csv}")
 
     # Also save a backup enriched copy for safety
-    enriched_copy = "data/gdelt_india_political_1500_enriched.csv"
-    if output_csv != enriched_copy:
+    enriched_copy = "data/processed/gdelt_india_political_1500_enriched.csv"
+    if output_csv != enriched_copy and not os.path.exists(enriched_copy):
         df.to_csv(enriched_copy, index=False)
         print(f"💾 Backup copy saved to: {enriched_copy}")
 

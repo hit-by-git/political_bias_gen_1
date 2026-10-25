@@ -2,7 +2,9 @@
 __pycache__/
 *.pyc
 output/
-experiments/checkpoints/
+experiments/checkpoints/*
+!experiments/checkpoints/.gitkeep
 *.pt
 *.bin
 *.safetensors
+

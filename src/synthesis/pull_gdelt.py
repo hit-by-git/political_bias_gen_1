@@ -77,12 +77,19 @@ def fetch_article_headline_and_snippet(url: str, title: str) -> dict:
     }
 
 
-def extract_real_entities_to_blacklist(articles: list, output_blacklist_path: str = "real_names.txt"):
+def extract_real_entities_to_blacklist(articles: list, output_blacklist_path: str = "data/processed/real_names.txt"):
     """
     Automatically extracts real political party acronyms and names from scraped headlines
     and registers them into real_names.txt to guarantee ZERO LEAKAGE into synthetic generation.
     """
     detected_entities = set()
+    
+    if not os.path.exists(output_blacklist_path):
+        alt = os.path.join(os.path.dirname(__file__), "../../data/processed/real_names.txt")
+        if os.path.exists(alt):
+            output_blacklist_path = alt
+        elif os.path.exists("real_names.txt"):
+            output_blacklist_path = "real_names.txt"
     
     # Patterns that indicate real political actors or institutions in Indian news
     entity_patterns = [
@@ -163,7 +170,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Live GDELT News Puller")
     parser.add_argument("--count", type=int, default=50, help="Number of articles to fetch (max 250 per call)")
     parser.add_argument("--timespan", type=str, default="7d", help="Timespan: e.g. 24h, 7d, 1m")
-    parser.add_argument("--output", type=str, default="data/gdelt_live_pulled.csv", help="Output CSV path")
+    parser.add_argument("--output", type=str, default="data/raw/gdelt_live_pulled.csv", help="Output CSV path")
     args = parser.parse_args()
 
     pull_and_save_gdelt(output_csv=args.output, count=args.count, timespan=args.timespan)

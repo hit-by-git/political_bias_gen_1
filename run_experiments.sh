@@ -24,12 +24,12 @@ mkdir -p experiments/checkpoints experiments/results
 case $TASK in
   "split")
     echo "📊 Splitting dataset into event-level train/val/test..."
-    python3 src/split_dataset.py
+    python3 src/evaluation/split_dataset.py
     ;;
 
   "task_a_muril")
     echo "🏋️ Training MuRIL on Task A (Post-Only)..."
-    python3 src/train_encoder.py \
+    python3 src/evaluation/train_encoder.py \
       --model_name_or_path google/muril-base-cased \
       --task post_only \
       --epochs 3 \
@@ -39,7 +39,7 @@ case $TASK in
 
   "task_b_muril")
     echo "🏋️ Training MuRIL on Task B (Evidence-Conditioned)..."
-    python3 src/train_encoder.py \
+    python3 src/evaluation/train_encoder.py \
       --model_name_or_path google/muril-base-cased \
       --task evidence_conditioned \
       --epochs 3 \
@@ -49,7 +49,7 @@ case $TASK in
 
   "task_b_indicbert")
     echo "🏋️ Training IndicBERT on Task B (Evidence-Conditioned)..."
-    python3 src/train_encoder.py \
+    python3 src/evaluation/train_encoder.py \
       --model_name_or_path ai4bharat/indic-bert \
       --task evidence_conditioned \
       --epochs 3 \
@@ -59,7 +59,7 @@ case $TASK in
 
   "task_b_xlmr")
     echo "🏋️ Training XLM-RoBERTa on Task B (Evidence-Conditioned)..."
-    python3 src/train_encoder.py \
+    python3 src/evaluation/train_encoder.py \
       --model_name_or_path xlm-roberta-base \
       --task evidence_conditioned \
       --epochs 3 \
@@ -69,7 +69,7 @@ case $TASK in
 
   "llm_cot")
     echo "🤖 Evaluating Qwen2.5-14B with Chain-of-Thought on Test Split..."
-    python3 src/eval_llm.py \
+    python3 src/evaluation/eval_llm.py \
       --model Qwen/Qwen2.5-14B-Instruct-GPTQ-Int8 \
       --mode evidence_cot \
       --tp_size 2
@@ -77,7 +77,7 @@ case $TASK in
 
   "debias_cda")
     echo "🛡️ Running Contrastive Symmetrical Debiasing (CDA) on MuRIL..."
-    python3 src/debiasing/contrastive_trainer.py \
+    python3 src/evaluation/debiasing/contrastive_trainer.py \
       --model_name_or_path google/muril-base-cased \
       --lambda_reg 0.5 \
       --epochs 3 \

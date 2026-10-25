@@ -18,8 +18,11 @@ import argparse
 from typing import Dict, List, Any
 
 # Ensure project root is in sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from src.evaluate_metrics import compute_all_metrics, format_text_report, export_latex_table
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+try:
+    from src.evaluation.evaluate_metrics import compute_all_metrics, format_text_report, export_latex_table
+except ImportError:
+    from evaluate_metrics import compute_all_metrics, format_text_report, export_latex_table
 
 # ── PROMPT TEMPLATES ──
 

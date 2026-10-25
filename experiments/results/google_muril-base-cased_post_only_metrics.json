@@ -1,0 +1,158 @@
+{
+  "overall": {
+    "accuracy": 92.43,
+    "macro_f1": 91.65,
+    "misinfo_f1": 89.09,
+    "misinfo_precision": 85.8,
+    "misinfo_recall": 92.64,
+    "tp": 151,
+    "fp": 25,
+    "fn": 12,
+    "tn": 301,
+    "total": 489
+  },
+  "variant_metrics": {
+    "neutral": {
+      "accuracy": 100.0,
+      "macro_f1": 50.0,
+      "misinfo_f1": 0.0,
+      "misinfo_precision": 0.0,
+      "misinfo_recall": 0.0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "tn": 163,
+      "total": 163
+    },
+    "hard_negative": {
+      "accuracy": 84.66,
+      "macro_f1": 45.85,
+      "misinfo_f1": 0.0,
+      "misinfo_precision": 0.0,
+      "misinfo_recall": 0.0,
+      "tp": 0,
+      "fp": 25,
+      "fn": 0,
+      "tn": 138,
+      "total": 163
+    },
+    "misinfo": {
+      "accuracy": 92.64,
+      "macro_f1": 48.09,
+      "misinfo_f1": 96.18,
+      "misinfo_precision": 100.0,
+      "misinfo_recall": 92.64,
+      "tp": 151,
+      "fp": 0,
+      "fn": 12,
+      "tn": 0,
+      "total": 163
+    }
+  },
+  "delta_abg": 15.34,
+  "tcr": 77.91,
+  "total_triplets": 163,
+  "consistent_triplets": 127,
+  "language_metrics": {
+    "Devanagari Hindi": {
+      "accuracy": 97.06,
+      "macro_f1": 96.67,
+      "misinfo_f1": 95.52,
+      "misinfo_precision": 96.97,
+      "misinfo_recall": 94.12,
+      "tp": 32,
+      "fp": 1,
+      "fn": 2,
+      "tn": 67,
+      "total": 102
+    },
+    "Hinglish (Roman script)": {
+      "accuracy": 89.9,
+      "macro_f1": 88.88,
+      "misinfo_f1": 85.51,
+      "misinfo_precision": 81.94,
+      "misinfo_recall": 89.39,
+      "tp": 59,
+      "fp": 13,
+      "fn": 7,
+      "tn": 119,
+      "total": 198
+    },
+    "plain English": {
+      "accuracy": 92.59,
+      "macro_f1": 91.91,
+      "misinfo_f1": 89.55,
+      "misinfo_precision": 84.51,
+      "misinfo_recall": 95.24,
+      "tp": 60,
+      "fp": 11,
+      "fn": 3,
+      "tn": 115,
+      "total": 189
+    }
+  },
+  "delta_cl_hinglish": 3.03,
+  "delta_cl_hindi": -4.76,
+  "tactic_metrics": {
+    "fabricated_amount": {
+      "accuracy": 92.31,
+      "macro_f1": 48.0,
+      "misinfo_f1": 96.0,
+      "misinfo_precision": 100.0,
+      "misinfo_recall": 92.31,
+      "tp": 48,
+      "fp": 0,
+      "fn": 4,
+      "tn": 0,
+      "total": 52
+    },
+    "inflated_count": {
+      "accuracy": 100.0,
+      "macro_f1": 50.0,
+      "misinfo_f1": 100.0,
+      "misinfo_precision": 100.0,
+      "misinfo_recall": 100.0,
+      "tp": 40,
+      "fp": 0,
+      "fn": 0,
+      "tn": 0,
+      "total": 40
+    },
+    "false_attribution": {
+      "accuracy": 86.67,
+      "macro_f1": 46.43,
+      "misinfo_f1": 92.86,
+      "misinfo_precision": 100.0,
+      "misinfo_recall": 86.67,
+      "tp": 26,
+      "fp": 0,
+      "fn": 4,
+      "tn": 0,
+      "total": 30
+    },
+    "reversed_outcome": {
+      "accuracy": 80.0,
+      "macro_f1": 44.44,
+      "misinfo_f1": 88.89,
+      "misinfo_precision": 100.0,
+      "misinfo_recall": 80.0,
+      "tp": 4,
+      "fp": 0,
+      "fn": 1,
+      "tn": 0,
+      "total": 5
+    },
+    "wrong_date": {
+      "accuracy": 91.67,
+      "macro_f1": 47.83,
+      "misinfo_f1": 95.65,
+      "misinfo_precision": 100.0,
+      "misinfo_recall": 91.67,
+      "tp": 33,
+      "fp": 0,
+      "fn": 3,
+      "tn": 0,
+      "total": 36
+    }
+  }
+}
