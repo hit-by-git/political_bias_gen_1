@@ -6,3 +6,7 @@ protobuf
 pandas
 tqdm
 requests
+beautifulsoup4
+accelerate
+pyarrow
+vllm>=0.6.0

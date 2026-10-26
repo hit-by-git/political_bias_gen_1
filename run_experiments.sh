@@ -77,11 +77,11 @@ case $TASK in
     ;;
 
   "llm_cot")
-    echo "🤖 Evaluating Qwen2.5-14B with Chain-of-Thought on Test Split..."
+    echo "🤖 Evaluating LLaMA-3.1-8B with Chain-of-Thought on Test Split..."
     python3 src/evaluation/eval_llm.py \
-      --model Qwen/Qwen2.5-14B-Instruct-GPTQ-Int8 \
+      --model ${SYNTHESIS_MODEL:-"meta-llama/Meta-Llama-3.1-8B-Instruct"} \
       --mode evidence_cot \
-      --tp_size 2
+      --tp_size 1
     ;;
 
   "debias_cda")
@@ -93,17 +93,48 @@ case $TASK in
       --batch_size 8
     ;;
 
+  "eval_step1_test")
+    echo "🔍 Step 1: Evaluating on Held-Out Contrastive Test Split (Causal Diagnostic)..."
+    python3 src/evaluation/evaluate_metrics.py \
+      --predictions experiments/results/debiased_muril_test_preds.jsonl \
+      --model_name "MuRIL + CDA (Ours)" \
+      --latex_out experiments/results/step1_test_latex.tex
+    ;;
+
+  "eval_step2_hasoc")
+    echo "🛡️ Step 2: Evaluating on HASOC 2019 (Toxicity Confounding Audit)..."
+    python3 src/evaluation/eval_hasoc.py \
+      --model_path experiments/checkpoints/contrastive_muril \
+      --hasoc_test_file data/HASOC_eng/hasoc2019_en_test-2919.tsv
+    ;;
+
+  "eval_step3_constraint")
+    echo "🌐 Step 3: Evaluating on Constraint@AAAI 2021 (Real-World Social Media)..."
+    python3 src/evaluation/eval_constraint.py \
+      --model_path experiments/checkpoints/contrastive_muril \
+      --test_file data/constraint_aaai2021/test.csv \
+      $DEVICE_FP16
+    ;;
+
+  "eval_all_3steps")
+    echo "🎯 Running Full 3-Step Evaluation Protocol..."
+    bash run_experiments.sh eval_step1_test
+    bash run_experiments.sh eval_step2_hasoc
+    bash run_experiments.sh eval_step3_constraint
+    ;;
+
   "all_encoders")
-    echo "🚀 Running all encoder baselines (MuRIL, IndicBERT, XLM-R)..."
+    echo "🚀 Running all encoder baselines (MuRIL, IndicBERT, XLM-R, CDA)..."
     bash run_experiments.sh task_a_muril
     bash run_experiments.sh task_b_muril
     bash run_experiments.sh task_b_indicbert
     bash run_experiments.sh task_b_xlmr
     bash run_experiments.sh debias_cda
+    bash run_experiments.sh eval_all_3steps
     ;;
 
   *)
-    echo "Usage: bash run_experiments.sh [synthesis_quadruplets|split|task_a_muril|task_b_muril|task_b_indicbert|task_b_xlmr|llm_cot|debias_cda|all_encoders]"
+    echo "Usage: bash run_experiments.sh [synthesis_quadruplets|split|task_a_muril|task_b_muril|task_b_indicbert|task_b_xlmr|llm_cot|debias_cda|eval_step1_test|eval_step2_hasoc|eval_step3_constraint|eval_all_3steps|all_encoders]"
     exit 1
     ;;
 esac

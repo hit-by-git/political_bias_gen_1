@@ -83,12 +83,28 @@ def main():
     ).to(device)
 
     train_events = load_dataset_by_events(args.train_file)
-    event_list = [ev for ev in train_events.values() if "neutral" in ev and "hard_negative" in ev and "misinfo" in ev]
+    is_quadruplet = any(
+        ("neutral_factual" in ev and "toxic_factual" in ev)
+        for ev in train_events.values()
+    )
 
-    print(f"📂 Loaded {len(event_list)} complete training triplets for contrastive learning.")
+    if is_quadruplet:
+        event_list = [
+            ev for ev in train_events.values()
+            if "neutral_factual" in ev and "toxic_factual" in ev and ("neutral_misinfo" in ev or "toxic_misinfo" in ev)
+        ]
+        format_name = "2x2 Factorial Quadruplets"
+    else:
+        event_list = [
+            ev for ev in train_events.values()
+            if "neutral" in ev and "hard_negative" in ev and "misinfo" in ev
+        ]
+        format_name = "Contrastive Triplets"
+
+    print(f"📂 Loaded {len(event_list)} complete {format_name} for contrastive learning.")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
-    total_steps = len(event_list) * args.epochs // args.batch_size
+    total_steps = max(1, len(event_list) * args.epochs // args.batch_size)
     num_warmup_steps = int(total_steps * 0.1)
     def lr_lambda(current_step: int) -> float:
         if current_step < num_warmup_steps:
@@ -111,7 +127,7 @@ def main():
         for i in range(0, len(event_list), args.batch_size):
             batch = event_list[i:i + args.batch_size]
 
-            # Flatten all 3 variants into batch
+            # Flatten variants into batch
             texts = []
             labels = []
             neutral_idx = []
@@ -119,19 +135,38 @@ def main():
 
             for item_idx, ev in enumerate(batch):
                 curr_base = len(texts)
-                # neutral
-                texts.append((ev["neutral"]["article"], ev["neutral"]["post"]))
-                labels.append(0)
-                neutral_idx.append(curr_base)
+                if is_quadruplet:
+                    # neutral factual
+                    texts.append((ev["neutral_factual"]["article"], ev["neutral_factual"]["post"]))
+                    labels.append(0)
+                    neutral_idx.append(curr_base)
 
-                # hard_negative
-                texts.append((ev["hard_negative"]["article"], ev["hard_negative"]["post"]))
-                labels.append(0)
-                hard_neg_idx.append(curr_base + 1)
+                    # toxic factual
+                    texts.append((ev["toxic_factual"]["article"], ev["toxic_factual"]["post"]))
+                    labels.append(0)
+                    hard_neg_idx.append(curr_base + 1)
 
-                # misinfo
-                texts.append((ev["misinfo"]["article"], ev["misinfo"]["post"]))
-                labels.append(1)
+                    # misinfo variants
+                    if "neutral_misinfo" in ev:
+                        texts.append((ev["neutral_misinfo"]["article"], ev["neutral_misinfo"]["post"]))
+                        labels.append(1)
+                    if "toxic_misinfo" in ev:
+                        texts.append((ev["toxic_misinfo"]["article"], ev["toxic_misinfo"]["post"]))
+                        labels.append(1)
+                else:
+                    # neutral
+                    texts.append((ev["neutral"]["article"], ev["neutral"]["post"]))
+                    labels.append(0)
+                    neutral_idx.append(curr_base)
+
+                    # hard_negative
+                    texts.append((ev["hard_negative"]["article"], ev["hard_negative"]["post"]))
+                    labels.append(0)
+                    hard_neg_idx.append(curr_base + 1)
+
+                    # misinfo
+                    texts.append((ev["misinfo"]["article"], ev["misinfo"]["post"]))
+                    labels.append(1)
 
             inputs = tokenizer(
                 [t[0] for t in texts],
@@ -171,10 +206,16 @@ def main():
         avg_loss = total_loss / max(1, (len(event_list) // args.batch_size))
         print(f"Epoch {epoch + 1}/{args.epochs} — Loss: {avg_loss:.4f} (CE: {total_ce / max(1, len(event_list) // args.batch_size):.4f}, Reg: {total_reg / max(1, len(event_list) // args.batch_size):.4f})")
 
+    # ── Save Debiased Checkpoint ──
+    os.makedirs(args.output_dir, exist_ok=True)
+    model.save_pretrained(args.output_dir)
+    tokenizer.save_pretrained(args.output_dir)
+    print(f"💾 Saved debiased model checkpoint to {args.output_dir}")
+
     # ── Test Evaluation ──
     print("\n🔍 Evaluating debiased model on Test Split...")
     test_recs = []
-    with open(args.test_file) as f:
+    with open(args.test_file, "r", encoding="utf-8") as f:
         for line in f:
             if line.strip():
                 test_recs.append(json.loads(line))
@@ -207,7 +248,7 @@ def main():
 
     os.makedirs(args.results_dir, exist_ok=True)
     out_preds = os.path.join(args.results_dir, "debiased_muril_test_preds.jsonl")
-    with open(out_preds, "w") as f:
+    with open(out_preds, "w", encoding="utf-8") as f:
         for r in annotated:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
@@ -217,8 +258,12 @@ def main():
         "task": "Evidence-Conditioned",
         "metrics": metrics
     }])
-    with open(latex_file, "w") as f:
+    with open(latex_file, "w", encoding="utf-8") as f:
         f.write(latex_code)
+
+    summary_file = os.path.join(args.results_dir, "debiased_muril_metrics.json")
+    with open(summary_file, "w", encoding="utf-8") as f:
+        json.dump(metrics, f, indent=2, ensure_ascii=False)
 
     print(f"✅ Symmetrical Debiasing complete! Saved predictions to {out_preds}")
 

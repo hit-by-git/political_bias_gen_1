@@ -57,7 +57,7 @@ class PostDataset:
 
     def __getitem__(self, idx):
         r = self.records[idx]
-        lbl = 1 if r["label"] == "misinfo" else 0
+        lbl = 1 if (r.get("label") == "misinfo" or "misinfo" in r.get("variant", "")) else 0
         if self.task == "post_only":
             return r["post"], None, lbl
         else:

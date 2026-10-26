@@ -86,6 +86,8 @@ def init_llm(tp_size: int = TENSOR_PARALLEL, model_name: str = MODEL_NAME, quant
         }
         if quantization:
             llm_kwargs["quantization"] = quantization
+        elif "llama" in model_name.lower():
+            llm_kwargs["dtype"] = "bfloat16"
         llm = LLM(**llm_kwargs)
 
 
@@ -136,16 +138,17 @@ def generate_llm(prompt: str, temperature: float = 0.7, max_retries: int = 3, is
         messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
         full_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     except Exception:
+        # Official LLaMA-3.1 Chat Template format fallback
         full_prompt = (
-            f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n"
-            f"<|im_start|>user\n{prompt}<|im_end|>\n"
-            f"<|im_start|>assistant\n"
+            f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{SYSTEM_PROMPT}<|eot_id|>"
+            f"<|start_header_id|>user<|end_header_id|>\n\n{prompt}<|eot_id|>"
+            f"<|start_header_id|>assistant<|end_header_id|>\n\n"
         )
 
     sampling_params = SamplingParams(
         temperature=temperature,
         max_tokens=512,
-        stop=["<|im_end|>", "<|endoftext|>", "<|eot_id|>", "</s>"],
+        stop=["<|im_end|>", "<|end_of_text|>", "<|eot_id|>", "</s>"],
     )
 
     for attempt in range(max_retries):
@@ -278,7 +281,7 @@ def main():
     ]
     blacklist_path = next((p for p in blacklist_candidates if os.path.exists(p)), None)
     if blacklist_path and os.path.exists(blacklist_path):
-        with open(blacklist_path) as f:
+        with open(blacklist_path, "r", encoding="utf-8") as f:
             for line in f:
                 name = line.strip()
                 if name and not name.startswith('#'):
@@ -304,7 +307,7 @@ def main():
     # ── Resume support ──
     processed_events = set()
     if args.resume and os.path.exists(out_file):
-        with open(out_file) as f:
+        with open(out_file, "r", encoding="utf-8") as f:
             for line in f:
                 try:
                     processed_events.add(json.loads(line).get('event_id'))
@@ -491,7 +494,7 @@ def main():
 
         # ── Atomic Persistence: All variants must pass or event is discarded ──
         if unit_valid and len(unit_records) == expected_count:
-            with open(out_file, 'a') as f:
+            with open(out_file, 'a', encoding="utf-8") as f:
                 for rec in unit_records:
                     f.write(json.dumps(rec, ensure_ascii=False) + '\n')
             stats["complete_units"] += 1
@@ -499,7 +502,7 @@ def main():
             processed_events.add(event_id)
         else:
             stats["rejected_events"] += 1
-            with open(rej_file, 'a') as f:
+            with open(rej_file, 'a', encoding="utf-8") as f:
                 rej_log = {
                     "event_id": int(event_id) if not pd.isna(event_id) else 0,
                     "reason": failed_reason,

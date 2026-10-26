@@ -19,20 +19,26 @@ echo "Started at: $(date)"
 echo "=========================================================="
 
 cd $SLURM_SUBMIT_DIR
-mkdir -p logs experiments/checkpoints experiments/results
+mkdir -p logs experiments/checkpoints experiments/results data/splits
 
-# 1. Load HPC Environment Modules
-module load anaconda3-2025-12-2
-module load cuda-13.0
-source /apps/compilers/anaconda3-2025-12-2/etc/profile.d/conda.sh
+# 1. Ensure UTF-8 locale on headless cluster nodes
+export PYTHONIOENCODING=utf-8
+export LC_ALL=en_US.UTF-8
+export LANG=en_US.UTF-8
 
-# 2. Activate Python Environment (e.g. pytorch)
-conda activate pytorch
+# 2. Load HPC Environment Modules
+module load anaconda3-2025-12-2 2>/dev/null || true
+module load cuda-12.4 2>/dev/null || module load cuda-12.1 2>/dev/null || true
+source /apps/compilers/anaconda3-2025-12-2/etc/profile.d/conda.sh 2>/dev/null || true
 
-# 3. Check GPU status
+# 3. Activate Python Environment (e.g. pytorch)
+conda activate pytorch 2>/dev/null || source activate pytorch 2>/dev/null || true
+
+# 4. Check GPU status
 nvidia-smi
 
-# 4. Run all encoders and debiasing benchmark
+# 5. Run complete encoder suite and 3-step evaluation protocol
+echo "🚀 Launching all encoder baselines & 3-step evaluation protocol..."
 bash run_experiments.sh all_encoders
 
 echo "=========================================================="

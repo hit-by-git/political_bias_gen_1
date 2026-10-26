@@ -65,6 +65,18 @@ HINDI_ACTOR_MAP = {
     "Activist Mehra": "कार्यकर्ता मेहरा",
     "Chief Patel": "प्रमुख पटेल",
     "Director Kapoor": "निदेशक कपूर",
+    "Rahul Gandhi": "राहुल गांधी",
+    "Sonia Gandhi": "सोनिया गांधी",
+    "Arvind Kejriwal": "अरविंद केजरीवाल",
+    "Mamata Banerjee": "ममता बनर्जी",
+    "Mallikarjun Kharge": "मल्लिकार्जुन खड़गे",
+    "Akhilesh Yadav": "अखिलेश यादव",
+    "Nitish Kumar": "नीतीश कुमार",
+    "Lalu Prasad Yadav": "लालू प्रसाद यादव",
+    "Mayawati": "मायावती",
+    "Priyanka Gandhi": "प्रियंका गांधी",
+    "Narendra Modi": "नरेंद्र मोदी",
+    "Sharad Pawar": "शरद पवार",
 }
 
 

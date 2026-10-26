@@ -47,15 +47,19 @@ def check_blacklist(text: str, blacklist: set) -> bool:
 
 
 def extract_numbers(text: str) -> set:
-    """Extracts all numbers from text after script normalization."""
+    """Extracts all numbers from text after script and comma normalization."""
     normalized = normalize_script(text)
+    # Remove digit grouping commas (e.g. 5,000 -> 5000, 2,50,000 -> 250000)
+    normalized = re.sub(r'(?<=\d),(?=\d)', '', normalized)
     return set(re.findall(r'\b\d+(?:\.\d+)?\b', normalized))
 
 
 def match_fact_in_text(fact_str: str, text: str, extra_hi: str = "") -> bool:
     """Checks if a fact (amount, count, day, or entity) is present in the text across English/Hindi."""
-    text_lower = normalize_script(text.lower())
-    fact_lower = normalize_script(fact_str.lower()) if fact_str else ""
+    text_clean = re.sub(r'(?<=\d),(?=\d)', '', text)
+    fact_clean = re.sub(r'(?<=\d),(?=\d)', '', fact_str) if fact_str else ""
+    text_lower = normalize_script(text_clean.lower())
+    fact_lower = normalize_script(fact_clean.lower()) if fact_clean else ""
 
     # Check direct match
     if fact_lower and fact_lower in text_lower:
@@ -77,6 +81,10 @@ def match_fact_in_text(fact_str: str, text: str, extra_hi: str = "") -> bool:
         # Verify the core number is present in the text
         if core_num in extract_numbers(text_lower):
             return True
+
+    # Check outcome verb base forms (e.g., "reject" in "reject kar diya")
+    if len(fact_lower) >= 4 and fact_lower.rstrip("ed") in text_lower:
+        return True
 
     return False
 

@@ -45,7 +45,7 @@ def load_dataset_by_events(input_path: str) -> Dict[Any, List[Dict[str, Any]]]:
 def get_event_stratum(posts: List[Dict[str, Any]]) -> Tuple[str, str]:
     """Determine the stratification key (language, tactic) for an event."""
     lang = posts[0].get("language", "Unknown")
-    misinfo_posts = [p for p in posts if p.get("variant") == "misinfo"]
+    misinfo_posts = [p for p in posts if p.get("variant") in ["misinfo", "neutral_misinfo", "toxic_misinfo"] or p.get("label") == "misinfo"]
     tactic = misinfo_posts[0].get("tactic", "none") if misinfo_posts else "none"
     return (lang, tactic)
 
@@ -145,7 +145,7 @@ def print_split_statistics(
     posts = [p for ev_id in event_ids for p in events[ev_id]]
     variant_counts = Counter(p.get("variant") for p in posts)
     lang_counts = Counter(p.get("language") for p in posts)
-    tactic_counts = Counter(p.get("tactic") for p in posts if p.get("variant") == "misinfo")
+    tactic_counts = Counter(p.get("tactic") for p in posts if p.get("variant") in ["misinfo", "toxic_misinfo", "neutral_misinfo"] or p.get("label") == "misinfo")
 
     print(f"\n{'=' * 60}")
     print(f"📊 SPLIT: {split_name.upper()} ({len(event_ids)} events, {len(posts)} posts)")
@@ -165,11 +165,12 @@ def print_split_statistics(
 
 def main():
     parser = argparse.ArgumentParser(description="Stratified event-level train/val/test splitting.")
+    default_input = "output/synthetic_quadruplets.jsonl" if os.path.exists("output/synthetic_quadruplets.jsonl") else "output/synthetic_dataset.jsonl"
     parser.add_argument(
         "--input",
         type=str,
-        default="output/synthetic_dataset.jsonl",
-        help="Path to synthetic_dataset.jsonl"
+        default=default_input,
+        help="Path to synthetic_quadruplets.jsonl or synthetic_dataset.jsonl"
     )
     parser.add_argument(
         "--output_dir",
@@ -184,7 +185,12 @@ def main():
     args = parser.parse_args()
 
     if not os.path.exists(args.input):
-        raise FileNotFoundError(f"Synthetic dataset file not found at {args.input}!")
+        # Fallback check
+        alt = "output/synthetic_dataset.jsonl" if "quadruplet" in args.input else "output/synthetic_quadruplets.jsonl"
+        if os.path.exists(alt):
+            args.input = alt
+        else:
+            raise FileNotFoundError(f"Synthetic dataset file not found at {args.input} or {alt}!")
 
     events = load_dataset_by_events(args.input)
     train_ids, val_ids, test_ids = stratified_event_split(

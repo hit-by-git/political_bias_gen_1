@@ -73,14 +73,20 @@ def compute_all_metrics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         vp = [1 if r["pred_label"] == "misinfo" else 0 for r in v_recs]
         variant_metrics[var] = compute_binary_metrics(vt, vp)
 
+    is_quadruplet = any(v in variant_metrics for v in ["neutral_factual", "toxic_factual", "neutral_misinfo", "toxic_misinfo"])
+
     # ── 1. Affective Bias Gap (Δ_ABG) ──
-    # Δ_ABG = Acc(Neutral) - Acc(Hard Negative)
-    acc_neutral = variant_metrics.get("neutral", {}).get("accuracy", 0.0)
-    acc_hard_neg = variant_metrics.get("hard_negative", {}).get("accuracy", 0.0)
+    # Δ_ABG = Acc(Neutral True) - Acc(Hostile/Slang True)
+    if is_quadruplet:
+        acc_neutral = variant_metrics.get("neutral_factual", {}).get("accuracy", 0.0)
+        acc_hard_neg = variant_metrics.get("toxic_factual", {}).get("accuracy", 0.0)
+    else:
+        acc_neutral = variant_metrics.get("neutral", {}).get("accuracy", 0.0)
+        acc_hard_neg = variant_metrics.get("hard_negative", {}).get("accuracy", 0.0)
     delta_abg = round(acc_neutral - acc_hard_neg, 2)
 
-    # ── 2. Triplet Consistency Rate (TCR) ──
-    # Fraction of events where ALL 3 variants are predicted correctly
+    # ── 2. Consistency Rate (TCR / QCR) ──
+    # Fraction of events where ALL variants are predicted correctly
     events = defaultdict(dict)
     for r in records:
         ev_id = r.get("event_id")
@@ -91,12 +97,21 @@ def compute_all_metrics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     total_events = len(events)
     consistent_events = 0
     for ev_id, var_dict in events.items():
-        if (
-            var_dict.get("neutral", False) and
-            var_dict.get("hard_negative", False) and
-            var_dict.get("misinfo", False)
-        ):
-            consistent_events += 1
+        if is_quadruplet:
+            if (
+                var_dict.get("neutral_factual", False) and
+                var_dict.get("toxic_factual", False) and
+                var_dict.get("neutral_misinfo", False) and
+                var_dict.get("toxic_misinfo", False)
+            ):
+                consistent_events += 1
+        else:
+            if (
+                var_dict.get("neutral", False) and
+                var_dict.get("hard_negative", False) and
+                var_dict.get("misinfo", False)
+            ):
+                consistent_events += 1
 
     tcr = round((consistent_events / max(1, total_events)) * 100, 2)
 
@@ -118,7 +133,7 @@ def compute_all_metrics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     delta_cl_hindi = round(f1_en - f1_hindi, 2)
 
     # ── 4. Tactic-Specific Performance (Misinfo Subset) ──
-    misinfo_records = [r for r in records if r.get("variant") == "misinfo"]
+    misinfo_records = [r for r in records if r.get("variant") in ["misinfo", "neutral_misinfo", "toxic_misinfo"] or r.get("label") == "misinfo"]
     tactic_records = defaultdict(list)
     for r in misinfo_records:
         tactic_records[r.get("tactic", "unknown")].append(r)
@@ -129,17 +144,33 @@ def compute_all_metrics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         tp = [1 if r["pred_label"] == "misinfo" else 0 for r in t_recs]
         tactic_metrics[tactic] = compute_binary_metrics(tt, tp)
 
+    # ── 5. HASOC Affect Confounding Audit ──
+    affect_records = defaultdict(list)
+    for r in records:
+        aff = r.get("affect") or ("toxic" if r.get("variant") in ["hard_negative", "misinfo", "toxic_factual", "toxic_misinfo"] else "neutral")
+        affect_records[aff].append(r)
+    affect_metrics = {}
+    for aff, a_recs in affect_records.items():
+        at = [1 if r["label"] == "misinfo" else 0 for r in a_recs]
+        ap = [1 if r["pred_label"] == "misinfo" else 0 for r in a_recs]
+        affect_metrics[aff] = compute_binary_metrics(at, ap)
+
     return {
         "overall": overall,
+        "is_quadruplet": is_quadruplet,
         "variant_metrics": variant_metrics,
         "delta_abg": delta_abg,
         "tcr": tcr,
+        "consistency_rate": tcr,
+        "total_units": total_events,
+        "consistent_units": consistent_events,
         "total_triplets": total_events,
         "consistent_triplets": consistent_events,
         "language_metrics": lang_metrics,
         "delta_cl_hinglish": delta_cl_hinglish,
         "delta_cl_hindi": delta_cl_hindi,
-        "tactic_metrics": tactic_metrics
+        "tactic_metrics": tactic_metrics,
+        "affect_metrics": affect_metrics
     }
 
 
@@ -149,19 +180,29 @@ def format_text_report(metrics: Dict[str, Any], model_name: str = "Model") -> st
     v = metrics["variant_metrics"]
     l = metrics["language_metrics"]
     t = metrics["tactic_metrics"]
+    is_quad = metrics.get("is_quadruplet", False)
 
     report = []
     report.append(f"{'=' * 65}")
     report.append(f"🎓 THESIS EVALUATION BENCHMARK: {model_name}")
+    report.append(f"• Dataset Format:      {'2x2 Factorial Quadruplet' if is_quad else 'Contrastive Triplet'}")
     report.append(f"{'=' * 65}")
     report.append(f"• Overall Accuracy:    {o['accuracy']}%")
     report.append(f"• Overall Macro-F1:    {o['macro_f1']}%")
     report.append(f"• Misinfo F1:          {o['misinfo_f1']}% (Prec: {o['misinfo_precision']}%, Rec: {o['misinfo_recall']}%)")
     report.append(f"\n🧠 CAUSAL SHORTCUT DIAGNOSTICS:")
-    report.append(f"• Neutral Accuracy:    {v.get('neutral', {}).get('accuracy', 0)}%")
-    report.append(f"• Hard Negative Acc:   {v.get('hard_negative', {}).get('accuracy', 0)}%")
-    report.append(f"• Δ_ABG (Bias Gap):    {metrics['delta_abg']}%  (Lower is better; >0 means fooled by slang)")
-    report.append(f"• TCR (Triplet Cons.): {metrics['tcr']}% ({metrics['consistent_triplets']}/{metrics['total_triplets']} triplets)")
+    if is_quad:
+        report.append(f"• Neutral Factual Acc: {v.get('neutral_factual', {}).get('accuracy', 0)}% (True + Calm)")
+        report.append(f"• Toxic Factual Acc:   {v.get('toxic_factual', {}).get('accuracy', 0)}% (True + Slang / HOF)")
+        report.append(f"• Neutral Misinfo Acc: {v.get('neutral_misinfo', {}).get('accuracy', 0)}% (Fake + Calm)")
+        report.append(f"• Toxic Misinfo Acc:   {v.get('toxic_misinfo', {}).get('accuracy', 0)}% (Fake + Slang / HOF)")
+        report.append(f"• Δ_ABG (Bias Gap):    {metrics['delta_abg']}%  (Acc(Neut_Fact) - Acc(Tox_Fact); ideal: 0%)")
+        report.append(f"• QCR (Quadruplet C.): {metrics['tcr']}% ({metrics['consistent_units']}/{metrics['total_units']} complete quadruplets)")
+    else:
+        report.append(f"• Neutral Accuracy:    {v.get('neutral', {}).get('accuracy', 0)}%")
+        report.append(f"• Hard Negative Acc:   {v.get('hard_negative', {}).get('accuracy', 0)}%")
+        report.append(f"• Δ_ABG (Bias Gap):    {metrics['delta_abg']}%  (Lower is better; >0 means fooled by slang)")
+        report.append(f"• TCR (Triplet Cons.): {metrics['tcr']}% ({metrics['consistent_triplets']}/{metrics['total_triplets']} triplets)")
     report.append(f"\n🌐 CROSS-LINGUAL PERFORMANCE (Macro-F1):")
     for lang, lm in l.items():
         report.append(f"  - {lang:25s}: Acc {lm['accuracy']:5.1f}% | Macro-F1 {lm['macro_f1']:5.1f}%")

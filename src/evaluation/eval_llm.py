@@ -121,11 +121,12 @@ def parse_llm_verdict(raw_output: str) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate generative LLMs on misinformation test set.")
-    parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-14B-Instruct-GPTQ-Int8")
+    default_model = os.environ.get("SYNTHESIS_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct")
+    parser.add_argument("--model", type=str, default=default_model)
     parser.add_argument("--test_file", type=str, default="data/splits/test.jsonl")
     parser.add_argument("--mode", type=str, choices=["post_only", "evidence_direct", "evidence_cot"], default="evidence_direct")
     parser.add_argument("--results_dir", type=str, default="experiments/results")
-    parser.add_argument("--tp_size", type=int, default=2, help="Tensor parallel size for vLLM")
+    parser.add_argument("--tp_size", type=int, default=1, help="Tensor parallel size for vLLM (1 for single GPU)")
     parser.add_argument("--max_tokens", type=int, default=512)
     parser.add_argument("--max_model_len", type=int, default=4096, help="Max context length for vLLM")
     parser.add_argument("--gpu_mem_util", type=float, default=0.9, help="GPU memory fraction for vLLM")
@@ -169,16 +170,29 @@ def main():
         sampling_params = SamplingParams(
             temperature=0.1,
             max_tokens=args.max_tokens,
-            stop=["}\n", "```"]
+            stop=["<|eot_id|>", "<|end_of_text|>", "<|im_end|>", "</s>"]
         )
-        llm = LLM(
-            model=args.model,
-            tensor_parallel_size=args.tp_size,
-            max_model_len=args.max_model_len,
-            gpu_memory_utilization=args.gpu_mem_util,
-            trust_remote_code=True
-        )
-        outputs = llm.generate(prompts, sampling_params)
+        llm_kwargs = {
+            "model": args.model,
+            "tensor_parallel_size": args.tp_size,
+            "max_model_len": args.max_model_len,
+            "gpu_memory_utilization": args.gpu_mem_util,
+            "trust_remote_code": True,
+        }
+        if "llama" in args.model.lower():
+            llm_kwargs["dtype"] = "bfloat16"
+        llm = LLM(**llm_kwargs)
+
+        try:
+            tokenizer = llm.get_tokenizer()
+            formatted_prompts = []
+            for p in prompts:
+                messages = [{"role": "user", "content": p}]
+                formatted_prompts.append(tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True))
+        except Exception:
+            formatted_prompts = prompts
+
+        outputs = llm.generate(formatted_prompts, sampling_params)
         responses = [out.outputs[0].text for out in outputs]
     except Exception as e:
         print(f"⚠️ vLLM failed or not installed ({e}). Checking Transformers fallback...")
