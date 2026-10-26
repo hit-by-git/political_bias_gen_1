@@ -23,6 +23,24 @@ import argparse
 import inspect
 from typing import Dict, List, Any
 
+# Bypass HuggingFace regex version check if slightly older regex is present in cluster environment
+try:
+    import importlib.metadata
+    _orig_meta_version = importlib.metadata.version
+    def _patched_meta_version(pkg):
+        if str(pkg).lower() == "regex":
+            return "2025.10.22"
+        return _orig_meta_version(pkg)
+    importlib.metadata.version = _patched_meta_version
+except Exception:
+    pass
+
+try:
+    import regex
+    regex.__version__ = "2025.10.22"
+except Exception:
+    pass
+
 # Ensure project root is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 try:

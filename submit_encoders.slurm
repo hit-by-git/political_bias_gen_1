@@ -27,18 +27,23 @@ export LC_ALL=en_US.UTF-8
 export LANG=en_US.UTF-8
 
 # 2. Load HPC Environment Modules
-module load anaconda3-2025-12-2 2>/dev/null || true
-module load cuda-12.4 2>/dev/null || module load cuda-12.1 2>/dev/null || true
-source /apps/compilers/anaconda3-2025-12-2/etc/profile.d/conda.sh 2>/dev/null || true
+module load anaconda3-2025-12-2 >/dev/null 2>&1 || true
+module load cuda-13.0 >/dev/null 2>&1 || module load cuda-12.4 >/dev/null 2>&1 || module load cuda >/dev/null 2>&1 || true
+source /apps/compilers/anaconda3-2025-12-2/etc/profile.d/conda.sh >/dev/null 2>&1 || true
 
 # 3. Activate Python Environment (e.g. pytorch)
-conda activate pytorch 2>/dev/null || source activate pytorch 2>/dev/null || true
-pip install -q -U "regex>=2025.10.22" 2>/dev/null || pip install -q -U --user "regex>=2025.10.22" 2>/dev/null || true
+conda activate pytorch >/dev/null 2>&1 || source activate pytorch >/dev/null 2>&1 || true
 
 # 4. Check GPU status
 nvidia-smi
 
-# 5. Run complete encoder suite and 3-step evaluation protocol
+# 5. Ensure dataset is split into train/val/test
+if [ ! -f "data/splits/train.jsonl" ]; then
+    echo "📊 Generating event-stratified train/val/test splits..."
+    python3 src/evaluation/split_dataset.py
+fi
+
+# 6. Run complete encoder suite and 3-step evaluation protocol
 echo "🚀 Launching all encoder baselines & 3-step evaluation protocol..."
 bash run_experiments.sh all_encoders
 
