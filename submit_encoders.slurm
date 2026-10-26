@@ -33,6 +33,7 @@ source /apps/compilers/anaconda3-2025-12-2/etc/profile.d/conda.sh 2>/dev/null ||
 
 # 3. Activate Python Environment (e.g. pytorch)
 conda activate pytorch 2>/dev/null || source activate pytorch 2>/dev/null || true
+pip install -q -U "regex>=2025.10.22" 2>/dev/null || pip install -q -U --user "regex>=2025.10.22" 2>/dev/null || true
 
 # 4. Check GPU status
 nvidia-smi
