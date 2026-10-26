@@ -7,4 +7,9 @@ experiments/checkpoints/*
 *.pt
 *.bin
 *.safetensors
+venv/
+.venv/
+env/
+logs/
+experiments/results/
 

@@ -31,8 +31,17 @@ module load anaconda3-2025-12-2 >/dev/null 2>&1 || true
 module load cuda-13.0 >/dev/null 2>&1 || module load cuda-12.4 >/dev/null 2>&1 || module load cuda >/dev/null 2>&1 || true
 source /apps/compilers/anaconda3-2025-12-2/etc/profile.d/conda.sh >/dev/null 2>&1 || true
 
-# 3. Activate Python Environment (e.g. pytorch)
-conda activate pytorch >/dev/null 2>&1 || source activate pytorch >/dev/null 2>&1 || true
+# 3. Activate Python Environment (venv if present, otherwise conda)
+if [ -f "$SLURM_SUBMIT_DIR/venv/bin/activate" ]; then
+    echo "⚡ Activating virtual environment: venv"
+    source "$SLURM_SUBMIT_DIR/venv/bin/activate"
+elif [ -f "$SLURM_SUBMIT_DIR/.venv/bin/activate" ]; then
+    echo "⚡ Activating virtual environment: .venv"
+    source "$SLURM_SUBMIT_DIR/.venv/bin/activate"
+else
+    echo "⚡ Activating conda environment: pytorch"
+    conda activate pytorch >/dev/null 2>&1 || source activate pytorch >/dev/null 2>&1 || true
+fi
 
 # 4. Check GPU status
 nvidia-smi
